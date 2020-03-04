@@ -1,6 +1,7 @@
 import sys
 import re
 import socket
+import select
 
 def config_read():
 
@@ -27,14 +28,19 @@ def config_read():
     print(router_id)
     print(input_ports)
     print(outputs)
+    return router_id, input_ports, outputs
 
-def router_setup(router_id, input_ports, outputs):
+def router_setup(router_id, input_ports, output_ports, neighbours):
+
+
+
+
+def router_loop():
     pass
 
 def main():
-
-    config_read()
-    router_setup()
+    router_id, input_ports, outputs, neighbours = config_read()
+    router_setup(router_id, input_ports, outputs, neighbours)
 
 if __name__ == "__main__":
     main()
