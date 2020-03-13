@@ -5,7 +5,7 @@ import select
 
 """
 TODO:
-    - Start the 320 assignment
+    - Start the 321 assignment
 
     - Write a proper docstring
 
@@ -22,8 +22,10 @@ TODO:
 
 """
 
+class ConfigSyntaxError(Exception):
+    pass
 
-class Config_Data():
+class Config_Data:
     """
     A class used to read and store router configuration data.
 
@@ -38,117 +40,122 @@ class Config_Data():
         Contains elements of form PortNum-Metric-ID for all adjacent routers.
         PortNum represents the interface of adjacent routers that are directly
         connected to the router.
-    config_okay : boolean
-        Used to represent whether or not the config file/ data supplied is valid
-        (Will probably remove and add specific execptions to raise later)
 
     Methods
     -------
     read_config
-        Opens a config file given as a parameter on the command line.
-        Does very simple parsing to check that the file has the correct syntax
+        Opens and stores the contents of a config file given as a
+        parameter on the command line.
     """
     def __init__(self):
         file_data = self.read_config()
-        self.router_id, self.input_ports, self.outputs = self.parse(file_data)
-        self.config_okay = True
 
-        self.check_router_id()
-        self.process_input_ports()
+        self.router_id = None
+        self.input_ports = None
+        self.outputs = None
 
-    def parse(data):
-        pass
+        self.parse(file_data)
 
+
+    def parse(self, file_data):
+
+        for line in file_data:
+            line = re.split(', |\s', line)
+            if line[0] in ['//', '']:
+                continue
+            elif line[0] == "router-id":
+                self.router_id = line[1]
+            elif line[0] == "input-ports":
+                self.input_ports = line[1:-1]
+            elif line[0] == "outputs":
+                self.outputs = line[1:-1]
+            else:
+                raise ConfigSyntaxError("Config file has incorrect syntax")
+
+        self.parse_router_id()
+        self.parse_input_ports()
+        self.parse_outputs()
 
     def read_config(self):
+
         if len(sys.argv) != 2:
-            print("Invalid number of parameters given.\nUsage: stuff.")
+            print("Incorrect number of parameters given on command line.")
+            print("USAGE: rip_router.py config.txt")
+            sys.exit(1) # Program failure, wrong number of args given on CLI
+
         file_name = sys.argv[1]
         file_data = []
 
         with open(file_name) as file:
             for line in file:
                 file_data.append(line)
-        # Below code will be part of the parsing stuff
-        # for line in file_data:
-        #     line = re.split(', |\s', line)
-        #     if line[0] in ['//', '']:
-        #         continue
-        #     elif line[0] == "router-id":
-        #         router_id = line[1]
-        #     elif line[0] == "input-ports":
-        #         input_ports = line[1:-1]
-        #     elif line[0] == "outputs":
-        #         outputs = line[1:-1]
-        #     else:
-        #         print("Incorrect config file syntax!")
         return file_data
 
-    def check_router_id(self):
-        """Checks if the provided router ID is an integer between 1 and
-           64000 inclusive."""
-
-        if not isinstance(self.router_id, int):
-            print("Router ID provided is not an integer!")
-            self.config_okay = False
-        elif 1 >= self.router_id >= 64000:
-            print("Router ID must be between 1 and 64000 inclusive!")
-            self.config_okay = False
-
-    def port_num_valid(self, port_num):
-
-        if 1024 >= input_ports[i] >= 64000:
-            print("Port number in config is outside acceptable range!")
-            return False
+    def parse_router_id(self):
+        try:
+            self.router_id = int(self.router_id)
+        except ValueError:
+            raise ValueError("Router Id must be an integer")
+            sys.exit(1)
         else:
-            return True
+            if 1 >= self.router_id >= 64000:
+                raise ConfigSyntaxError("Router ID must be between 1 and 64000 inclusive!")
+                sys.exit(1)
+    def check_port_num(self, port_num):
 
-    def process_input_ports(self):
-        for i in range(self.input_ports):
+        if 1024 >= port_num >= 64000:
+            raise ConfigSyntaxError("Port number in config is outside acceptable range")
+            sys.exit(1)
+
+    def parse_input_ports(self):
+
+        for i in range(len(self.input_ports)):
             try:
                 self.input_ports[i] = int(self.input_ports[i])
-                if not port_num_valid(self.input_ports[i]):
-                    self.config_okay = False
-                    break
             except ValueError:
-                print("Value given for an input port isn't an integer!")
-                self.config_okay = False
-                break
-        if len(set(self.input_ports)) != len(self.input_ports):
-            print("Bruh you need unique port nums!")
-            self.config_okay = False
-
-    def process_outputs(self):
-        for router in self.outputs:
-            try:
-                router = [int(x) for x in router.split('-')]
-            except ValueError:
-                print("Outputs should be of form: portNum-metric-routerID, all of type int")
-                self.config_okay = False
+                raise ValueError("Value given for an input port isn't an integer!")
+                sys.exit(1)
             else:
-                router = {'Port' : router[0], 'Metric' : router[1], 'ID' : router[2]}
-                if router['Port'] in self.input_ports:
-                    print("Port numbers in outputs cannot be in inputs!")
-                    self.config_okay = False
-                    break
-                if not port_num_valid(router['Port']):
-                    self.config_okay = False
-                    break
+                self.check_port_num(self.input_ports[i])
+
+        if len(set(self.input_ports)) != len(self.input_ports):
+            raise ConfigSyntaxError("Input ports must be unique")
+            sys.exit(1)
+
+    def parse_outputs(self):
+        """I hate this method but can't make it less gross"""
+
+        for i in range(len(self.outputs)):
+            try:
+                router = [int(x) for x in self.outputs[i].split('-')]
+            except ValueError:
+                raise ValueError("Outputs should only contain hyphen separated ints")
+                sys.exit(1)
+            else:
+                if len(router) != 3:
+                    raise ConfigSyntaxError("Outputs should be of form: portNum-metric-routerID")
+                    sys.exit(1)
+                else:
+                    router = {'Port' : router[0], 'Metric' : router[1], 'ID' : router[2]}
+                    if router['Port'] in self.input_ports:
+                        raise ConfigSyntaxError("Port numbers in outputs cannot be in inputs!")
+                        sys.exit(1)
+                    else:
+                        self.check_port_num(router['Port'])
+
+            self.outputs[i] = router
 
 
-def router_setup(router_id, input_ports, output_ports, neighbours):
+class RipRouter:
     pass
 
-
-def router_loop():
-    pass
 
 def main():
 
     router_config = Config_Data()
-    if not router_config.config_okay:
-        print("You blew it!")
-
+    print(router_config.router_id)
+    print(router_config.input_ports)
+    print(router_config.outputs)
     #router_setup(router_id, input_ports, outputs, neighbours)
 
 if __name__ == "__main__":
