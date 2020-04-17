@@ -82,23 +82,23 @@ class Config_Data:
         return file_data
 
     def parse(self, file_data):
-        # try:
-        for line in file_data:
-            line = re.split(', |\s', line)
-            if line[0] in ['//', '']:
-                continue
-            elif line[0] == "router-id":
-                self.router_id = line[1]
-            elif line[0] == "input-ports":
-                self.input_ports = line[1:-1]
-            elif line[0] == "outputs":
-                self.outputs = line[1:-1]
-            else:
-                raise ConfigSyntaxError("ConfigSyntaxError: Config file syntax is incorrect")
+        try:
+            for line in file_data:
+                line = re.split(', |\s', line)
+                if line[0] in ['//', '']:
+                    continue
+                elif line[0] == "router-id":
+                    self.router_id = line[1]
+                elif line[0] == "input-ports":
+                    self.input_ports = line[1:-1]
+                elif line[0] == "outputs":
+                    self.outputs = line[1:-1]
+                else:
+                    raise ConfigSyntaxError("ConfigSyntaxError: Config file syntax is incorrect")
 
-        # except ConfigSyntaxError as error:
-        #     print(str(error))
-        #     sys.exit(1)
+        except ConfigSyntaxError as error:
+            print(str(error))
+            sys.exit(1)
 
         self.parse_router_id()
         self.parse_input_ports()
@@ -168,7 +168,7 @@ class RipRouter:
 
 def event_loop(router):
     pass
-    
+
 def main():
 
     router_config = Config_Data()
