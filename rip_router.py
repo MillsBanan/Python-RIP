@@ -13,15 +13,18 @@ TODO:
 
 """
 
+
 class ConfigSyntaxError(Exception):
     """
     A class to raise custom errors
     """
+
     def __init__(self, message):
         self.message = message
 
     def __str__(self):
         return str(self.message)
+
 
 class Config_Data:
     """
@@ -51,6 +54,7 @@ class Config_Data:
     parse_outputs
     check_port_num
     """
+
     def __init__(self):
         file_data = self.read_config_file()
 
@@ -60,13 +64,12 @@ class Config_Data:
 
         self.parse(file_data)
 
-
     def read_config_file(self):
 
         if len(sys.argv) != 2:
             print("Incorrect number of parameters given on command line.")
             print("USAGE: rip_router.py config.txt")
-            sys.exit(1) # Program failure, wrong number of args given on CLI
+            sys.exit(1)  # Program failure, wrong number of args given on CLI
 
         file_name = sys.argv[1]
         file_data = []
@@ -112,7 +115,8 @@ class Config_Data:
             sys.exit(1)
         else:
             if 1 >= self.router_id >= 64000:
-                raise ConfigSyntaxError("ConfigSyntaxError: Router ID must be between 1 and 64000 inclusive!")
+                raise ConfigSyntaxError(
+                    "ConfigSyntaxError: Router ID must be between 1 and 64000 inclusive!")
                 sys.exit(1)
 
     def parse_input_ports(self):
@@ -145,7 +149,7 @@ class Config_Data:
                             Outputs should be of form: portNum-metric-routerID")
                     sys.exit(1)
                 else:
-                    router = {'Port' : router[0], 'Metric' : router[1], 'ID' : router[2]}
+                    router = {'Port': router[0], 'Metric': router[1], 'ID': router[2]}
                     if router['Port'] in self.input_ports:
                         raise ConfigSyntaxError("ConfigSyntaxError: \
                                 Port numbers in outputs cannot be in inputs!")
@@ -162,12 +166,51 @@ class Config_Data:
                     Port number in config is outside acceptable range")
             sys.exit(1)
 
+    def getneighbourrouter(self, router_ID):  # find neighbour by ID
+        for neighbour in self.outputs:
+            if neighbour['ID'] == router_ID:
+                return neighbour
+        else:
+            raise ConfigSyntaxError("ConfigSyntaxError: Neighbouring router not found")
+
 
 class RipRouter:
-    pass
+    def __init__(self, router_config):
+        self.router_config = router_config
+        self.inputsocket = []
+        self.outputsocket = None
+        self.address = '127.0.0.1'
+
+        self.start()
+
+    def start(self):
+        """Binds input sockets and sets the ouput socket to the first input socket (if it exists)"""
+        for input_port in self.router_config.input_ports:
+            try:
+                sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                sock.bind(self.address, input_port)
+                self.inputsocket.append(sock)
+            except ConfigSyntaxError as err:
+                print(str(err))
+                sys.exit(1)
+
+        if len(self.inputsocket) == 0:
+            raise ConfigSyntaxError("ConfigSyntaxError: Router has no attached inputs!")
+            # bruh not sure if this is how you want my errors
+            sys.exit(1)
+        else:
+            self.outputsocket = self.inputsocket[0]
+
+    def send(self, data, destination):
+        """Send data to a neighbouring destination by router ID"""
+        neighbour = self.router_config.getneighbourrouter(destination)
+        self.inputsocket[0].sendto(data, (self.address, neighbour['Port']))
+
 
 def event_loop(router):
-    pass
+    while True:
+        pass
+
 
 def main():
 
@@ -175,6 +218,9 @@ def main():
     print(router_config.router_id)
     print(router_config.input_ports)
     print(router_config.outputs)
+    router = RipRouter(router_config)
+    event_loop(router)
+
 
 if __name__ == "__main__":
     main()
