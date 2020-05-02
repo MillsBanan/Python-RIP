@@ -26,7 +26,7 @@ class ConfigSyntaxError(Exception):
         return str(self.message)
 
 
-class Config_Data:
+class ConfigData:
     """
     A class used to read and store router configuration data.
 
@@ -65,23 +65,19 @@ class Config_Data:
         self.parse(file_data)
 
     def read_config_file(self):
-
         if len(sys.argv) != 2:
             print("Incorrect number of parameters given on command line.")
             print("USAGE: rip_router.py config.txt")
             sys.exit(1)  # Program failure, wrong number of args given on CLI
-
         file_name = sys.argv[1]
         file_data = []
-
         try:
-            with open(file_name) as file:
-                for line in file:
+            with open(file_name) as f:
+                for line in f:
                     file_data.append(line)
         except FileNotFoundError as err:
             print("FileNotFoundError: {0}".format(err))
             sys.exit(1)
-
         return file_data
 
     def parse(self, file_data):
@@ -110,14 +106,15 @@ class Config_Data:
     def parse_router_id(self):
         try:
             self.router_id = int(self.router_id)
+            if self.router_id < 1 or self.router_id > 64000:
+                raise ConfigSyntaxError(
+                    "ConfigSyntaxError: Router ID must be between 1 and 64000 inclusive!")
         except ValueError:
             print("ValueError: Router Id must be an integer")
             sys.exit(1)
-        else:
-            if 1 >= self.router_id >= 64000:
-                raise ConfigSyntaxError(
-                    "ConfigSyntaxError: Router ID must be between 1 and 64000 inclusive!")
-                sys.exit(1)
+        except ConfigSyntaxError as err:
+            print(str(err))
+            sys.exit(1)
 
     def parse_input_ports(self):
 
@@ -129,9 +126,11 @@ class Config_Data:
                 sys.exit(1)
             else:
                 self.check_port_num(self.input_ports[i])
-
-        if len(set(self.input_ports)) != len(self.input_ports):
-            raise ConfigSyntaxError("ConfigSyntaxError: Input ports must be unique")
+        try:
+            if len(set(self.input_ports)) != len(self.input_ports):
+                raise ConfigSyntaxError("ConfigSyntaxError: Input ports must be unique")
+        except ConfigSyntaxError as err:
+            print(str(err))
             sys.exit(1)
 
     def parse_outputs(self):
@@ -144,26 +143,29 @@ class Config_Data:
                 print("ValueError: Outputs should only contain hyphen separated ints")
                 sys.exit(1)
             else:
-                if len(router) != 3:
-                    raise ConfigSyntaxError("ConfigSyntaxError: \
-                            Outputs should be of form: portNum-metric-routerID")
-                    sys.exit(1)
-                else:
-                    router = {'Port': router[0], 'Metric': router[1], 'ID': router[2]}
-                    if router['Port'] in self.input_ports:
-                        raise ConfigSyntaxError("ConfigSyntaxError: \
-                                Port numbers in outputs cannot be in inputs!")
-                        sys.exit(1)
+                try:
+                    if len(router) != 3:
+                        raise ConfigSyntaxError(
+                            "ConfigSyntaxError: Outputs should be of form: portNum-metric-routerID")
                     else:
-                        self.check_port_num(router['Port'])
-
+                        router = {'Port': router[0], 'Metric': router[1], 'ID': router[2]}
+                        if router['Port'] in self.input_ports:
+                            raise ConfigSyntaxError(
+                                "ConfigSyntaxError: Port numbers in outputs cannot be in inputs!")
+                        else:
+                            self.check_port_num(router['Port'])
+                except ConfigSyntaxError as err:
+                    print(str(err))
+                    sys.exit(1)
             self.outputs[i] = router
 
     def check_port_num(self, port_num):
-
-        if 1024 >= port_num >= 64000:
-            raise ConfigSyntaxError("ConfigSyntaxError: \
-                    Port number in config is outside acceptable range")
+        try:
+            if port_num < 1024 or port_num > 64000:
+                raise ConfigSyntaxError(
+                    "ConfigSyntaxError: Port number in config is outside acceptable range")
+        except ConfigSyntaxError as err:
+            print(str(err))
             sys.exit(1)
 
     def getneighbourrouter(self, router_ID):  # find neighbour by ID
@@ -214,7 +216,7 @@ def event_loop(router):
 
 def main():
 
-    router_config = Config_Data()
+    router_config = ConfigData()
     print(router_config.router_id)
     print(router_config.input_ports)
     print(router_config.outputs)
