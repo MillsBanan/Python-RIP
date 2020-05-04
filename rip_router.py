@@ -26,6 +26,18 @@ class ConfigSyntaxError(Exception):
         return str(self.message)
 
 
+class RouterError(Exception):
+    """
+    A class to raise custom errors
+    """
+
+    def __init__(self, message):
+        self.message = message
+
+    def __str__(self):
+        return str(self.message)
+
+
 class ConfigData:
     """
     A class used to read and store router configuration data.
@@ -177,11 +189,14 @@ class ConfigData:
 
 
 class RipRouter:
+    """Class which simulates a router with attached neighbours, message transmit/receive and a forwarding table"""
+
     def __init__(self, router_config):
         self.router_config = router_config
         self.inputsocket = []
         self.outputsocket = None
         self.address = '127.0.0.1'
+        self.forwardingtable = []
 
         self.start()
 
@@ -192,12 +207,12 @@ class RipRouter:
                 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
                 sock.bind(self.address, input_port)
                 self.inputsocket.append(sock)
-            except ConfigSyntaxError as err:
+            except RouterError as err:
                 print(str(err))
                 sys.exit(1)
 
         if len(self.inputsocket) == 0:
-            raise ConfigSyntaxError("ConfigSyntaxError: Router has no attached inputs!")
+            raise ConfigSyntaxError("RouterError: Router has no attached inputs!")
             # bruh not sure if this is how you want my errors
             sys.exit(1)
         else:
@@ -208,9 +223,24 @@ class RipRouter:
         neighbour = self.router_config.getneighbourrouter(destination)
         self.inputsocket[0].sendto(data, (self.address, neighbour['Port']))
 
+    def addforwardingentry(self, id, nexthop, distance):
+        self.forwardingtable.append([id, nexthop, distance])
 
-def event_loop(router):
-    while True:
+    def removeforwardingentry(self, id):
+        # Removes entries in forwarding table
+        for entry in self.forwardingtable:
+            if entry[0] == id:
+                self.forwardingtable.remove(entry)
+
+
+class RIPdaemon:
+    """RIP routing daemon which contains a router class which it controls"""
+
+    def __init__(self, router):
+        self.router = router
+
+    def start(self):
+        # starts the daemon loop
         pass
 
 
@@ -221,7 +251,7 @@ def main():
     print(router_config.input_ports)
     print(router_config.outputs)
     router = RipRouter(router_config)
-    event_loop(router)
+    RIPdaemon(router).start
 
 
 if __name__ == "__main__":
