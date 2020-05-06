@@ -236,7 +236,8 @@ class RipRouter:
 
     def addforwardingentry(self, id, nexthop, distance):
         timeoutflag = 0
-        self.forwardingtable.append([id, nexthop, distance, timeoutflag])
+        expirytimer = self.timerrefresh()
+        self.forwardingtable.append([id, nexthop, distance, timeoutflag, expirytimer])
 
     def removeforwardingentry(self, id):
         # Removes entries in forwarding table
