@@ -227,7 +227,7 @@ class ForwardingEntry:
         self.next_hop_port = port
         self.metric = metric
         self.timeout_flag = 0
-        self.update_timer = time()
+        self.update_timer = timer_refresh()
 
     def __str__(self):
         return "Next hop router ID: {}\n" \
@@ -261,7 +261,7 @@ class RipRouter:
         own_entry = ForwardingEntry(self.config.router_id, "N/A", 0)
         self.forwarding_table[self.config.router_id] = own_entry
         logger("Forwarding table entry created for router {}:\n"
-              "{}".format(self.config.router_id, own_entry))
+               "{}".format(self.config.router_id, own_entry))
 
     def update_forwarding_entry(self, router_id, entry):
         """Updates an entry to the forwarding table"""
