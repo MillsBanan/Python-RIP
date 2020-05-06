@@ -1,15 +1,16 @@
 import sys
 import re
-from time import time
 import socket
 import traceback
 import select
-
-UPDATE_FREQ = 20
-
+import time
+import random
 
 """
 TODO:
+    - Start the 321 assignment
+
+    - Write a proper docstring
 
     - Implementation of RIP lmao
 
@@ -199,6 +200,7 @@ class RipRouter:
         self.address = '127.0.0.1'
         self.forwarding_table = dict()
         self.start()
+        self.updatetimer = self.timerrefresh(1)
 
     def start(self):
         """Binds input sockets and sets the output socket to the first input socket (if it exists)"""
@@ -217,20 +219,20 @@ class RipRouter:
             print(str(err))
             sys.exit(1)
         else:
-            self.output_socket = self.input_sockets[0]
-            # for neighbour in self.router_config.outputs:
-            #     entry = ForwardingEntry(neighbour["ID"], neighbour["Port"], neighbour["Metric"])
-            #     self.forwarding_table[entry.next_hop_id] = entry
+            self.outputsocket = self.inputsocket[0]
 
-    def send(self, data, router_id):
-        """Send data to a neighbouring router by router ID"""
-        try:
-            self.output_socket.sendto(data, (self.address, self.forwarding_table[router_id].next_hop_id))
-        except KeyError as err:
-            print("KeyError: Router {} is not in the forwarding table".format(err))
+    def timer_refresh(type=0):
+        # type = 1 : returns a initial start time +- 0-5 seconds of offset
+        # type = 2: no randomness, used for route timers
+        if type == 1:
+            return time.time() + (10 * random.randint(0, 5) - 5)
+        else:
+            return time.time()
 
     def update_forwarding_entry(self, router_id, entry):
         """Updates an entry to the forwarding table"""
+        timeoutflag = 0
+        expirytimer = self.timerrefresh()
         self.forwarding_table[router_id] = entry
 
     def remove_forwarding_entry(self, router_id):
@@ -239,14 +241,6 @@ class RipRouter:
             del self.forwarding_table[router_id]
         except KeyError as err:
             print("KeyError: Router {} is not in the forwarding table".format(err))
-
-    # Can probs just look in the forwarding table
-    # def get_neighbour_router(self, router_id):  # find neighbour by ID
-    #     for neighbour in self.router_config.outputs:
-    #         if neighbour['ID'] == router_id:
-    #             return neighbour
-    #     else:
-    #         raise ConfigSyntaxError("ConfigSyntaxError: Neighbouring router not found")
 
 
 class RipDaemon:
