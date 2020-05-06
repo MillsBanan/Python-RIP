@@ -23,6 +23,15 @@ UPDATE_FREQ = 30
 TIMEOUT = 180
 GARBAGE = 300
 INFINITY = 16
+ENABLE_LOGGER = 1
+
+
+def logger(message):
+    """
+    Logger function which can easily be enabled or disabled for printing logging information
+    """
+    if ENABLE_LOGGER:
+        print(message)
 
 
 class ConfigSyntaxError(Exception):
@@ -182,7 +191,8 @@ class ConfigData:
             else:
                 try:
                     if len(router) != 3:
-                        raise ConfigSyntaxError("Outputs should be of form: portNum-metric-routerID")
+                        raise ConfigSyntaxError(
+                            "Outputs should be of form: portNum-metric-routerID")
                     else:
                         if router[0] in self.input_ports:
                             raise ConfigSyntaxError("Port numbers in outputs cannot be in inputs!")
@@ -224,6 +234,7 @@ class ForwardingEntry:
                "Next hop router port: {}\n" \
                "Metric: {}\n".format(self.next_hop_id, self.next_hop_port, self.metric)
 
+
 class RipRouter:
     """Class which simulates a router with attached neighbours, message transmit/receive and a forwarding table"""
 
@@ -249,18 +260,19 @@ class RipRouter:
         self.output_socket = self.input_sockets[0]
         own_entry = ForwardingEntry(self.config.router_id, "N/A", 0)
         self.forwarding_table[self.config.router_id] = own_entry
-        print("Forwarding table entry created for router {}:\n"
+        logger("Forwarding table entry created for router {}:\n"
               "{}".format(self.config.router_id, own_entry))
 
     def update_forwarding_entry(self, router_id, entry):
         """Updates an entry to the forwarding table"""
         entry.timeout_flag = 0
-        expir_timer = timer_refresh()
+        entry.update_timer = timer_refresh()
         self.forwarding_table[router_id] = entry
 
     def send(self, router_id, data):
         try:
-            self.output_socket.sendto(data, (self.address , self.forwarding_table[router_id].next_hop_port))
+            self.output_socket.sendto(
+                data, (self.address, self.config.outputs[router_id][0])
         except OSError as err:
             traceback.print_exc()
             print(err)
@@ -277,9 +289,9 @@ class RipDaemon:
     """RIP routing daemon which contains a router class which it controls"""
 
     def __init__(self, router):
-        self.router = router
-        self.last_update = None
-        self.timing_queue = []
+        self.router=router
+        self.last_update=None
+        self.timing_queue=[]
 
     def start(self):
         while True:
@@ -289,26 +301,27 @@ class RipDaemon:
                 pass
             else:
                 try:
-                    readable, _, _ = select(self.router.input_sockets, [], [], timeout=None) # timeout will actually be equal to something off of timing queue just not sure how to implement yet
+                    readable, _, _=select(self.router.input_sockets, [], [], timeout=None)
+                    # timeout will actually be equal to something off of timing queue just not sure how to implement yet
                 except OSError as err:
                     traceback.print_exc()
                     print(str(err))
                 else:
                     # do the thing
                     if not readable:
-                        #timeout happened do the thing
+                        # timeout happened do the thing
                         pass
                     else:
-                        #do the other thing
+                        # do the other thing
                         pass
+
     def update(self):
         # sends update packets to all neighbouring routers
         for neighbour in self.router.config.outputs.keys():
             data=RipPacket(self.router.config.router_id,
-                           self.router.forwarding_table, ).construct()
+                             self.router.forwarding_table, ).construct()
             self.router.send(data, neighbour)
         self.router.update_timer=timer_refresh(1)  # reset update timer
-
 
 
 class RipPacket:
@@ -329,8 +342,6 @@ class RipPacket:
         # deconstructs RIP packet and sets sourceid and entries fields
 
 
-
-
 def timer_refresh(type=0):
     # type = 1 : returns a initial start time +- 0-5 seconds of offset
     # type = 2: no randomness, used for route timers
@@ -341,9 +352,9 @@ def timer_refresh(type=0):
 
 
 def main():
-    router_config = ConfigData()
+    router_config=ConfigData()
     print(router_config)
-    router = RipRouter(router_config)
+    router=RipRouter(router_config)
     # RipDaemon(router).start
 
 
