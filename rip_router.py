@@ -8,11 +8,14 @@ import random
 
 """
 TODO:
-    - Start the 321 assignment
 
     - Write a proper docstring
-
     - Implementation of RIP lmao
+
+    Shai:
+        - RIP daemon update() function
+        - RIP packet construction & deconstruction
+
 
 """
 
@@ -264,13 +267,42 @@ class RipDaemon:
     def __init__(self, router):
         self.router = router
         self.last_update = None
-    #
-    # def start(self):
-    #
-    #     while True:
-    #         if time() - self.last_update >= UPDATE_FREQ:
-    #             self.send_updates()
-    #         elif
+
+    def start(self):
+
+        while True:
+            inputsockets, , exceptlist = select(self.router.inputsocket, self.
+            if time() - self.last_update >= UPDATE_FREQ:
+                self.send_updates()
+            elif
+    def update(self):
+        # sends update packets to all neighbouring routers
+        for neighbour in self.router.router_config.outputs.keys():
+            data=RipPacket(self.router.router_config.router_id,
+                           self.router.forwarding_table, ).construct()
+            self.router.send(data, neighbour)
+        self.router.update_timer=timer_refresh(1)  # reset update timer
+
+
+
+class RipPacket:
+    def __init__(self, sourceid=None, entries=None, destinationid=None):
+        self.sourceid=hostid
+        # poisoned reverse, if the entry's next hop is the destination, it sets the metric to 'infinity'
+        for entry in entries:
+            if entry.next_hop_id == destinationid:
+                entry.metric == INFINITY
+
+        self.entries=entries
+
+    def construct(self):
+        # builds packet with the information in the object and returns a bytearray
+        return None
+
+    def deconstruct(bytearray):
+        # deconstructs RIP packet and sets sourceid and entries fields
+
+
 
 
 def timer_refresh(type=0):
