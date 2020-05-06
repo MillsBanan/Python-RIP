@@ -2,6 +2,8 @@ import sys
 import re
 import socket
 import select
+import time
+import random
 
 """
 TODO:
@@ -199,6 +201,7 @@ class RipRouter:
         self.forwardingtable = []
 
         self.start()
+        self.updatetimer = self.timerrefresh(1)
 
     def start(self):
         """Binds input sockets and sets the ouput socket to the first input socket (if it exists)"""
@@ -218,13 +221,22 @@ class RipRouter:
         else:
             self.outputsocket = self.inputsocket[0]
 
+    def timerrefresh(type=0):
+        # type = 1 : returns a initial start time +- 0-5 seconds of offset
+        # type = 2: no randomness, used for route timers
+        if type == 1:
+            return time.time() + (10 * random.randint(0, 5) - 5)
+        else:
+            return time.time()
+
     def send(self, data, destination):
         """Send data to a neighbouring destination by router ID"""
         neighbour = self.router_config.getneighbourrouter(destination)
         self.inputsocket[0].sendto(data, (self.address, neighbour['Port']))
 
     def addforwardingentry(self, id, nexthop, distance):
-        self.forwardingtable.append([id, nexthop, distance])
+        timeoutflag = 0
+        self.forwardingtable.append([id, nexthop, distance, timeoutflag])
 
     def removeforwardingentry(self, id):
         # Removes entries in forwarding table
@@ -240,8 +252,9 @@ class RIPdaemon:
         self.router = router
 
     def start(self):
-        # starts the daemon loop
-        pass
+        while True:
+            pass
+            # readlist, writelist, exceptlist = select(self.router.inputsocket, self.
 
 
 def main():
