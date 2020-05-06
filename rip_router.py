@@ -83,6 +83,11 @@ class ConfigData:
         self.outputs = None
         self.parse(file_data)
 
+    def __str__(self):
+        return "Configuration set for router {}:\n" \
+               "Input ports: {}\n" \
+               "Outputs: {}".format(self.router_id, self.input_ports, self.outputs)
+
     def read_config_file(self):
         if len(sys.argv) != 2:
             print("Incorrect number of parameters given on command line.")
@@ -113,12 +118,18 @@ class ConfigData:
                     self.outputs = line[1:-1]
                 else:
                     raise ConfigSyntaxError("ConfigSyntaxError: Config file syntax is incorrect")
-        except ConfigSyntaxError as error:
-            print(str(error))
+        except ConfigSyntaxError as err:
+            print(str(err))
             sys.exit(1)
         self.parse_router_id()
         self.parse_input_ports()
         self.parse_outputs()
+        try:
+            if None in [self.router_id, self.outputs, self.input_ports]:
+                raise ConfigSyntaxError("ConfigSyntaxError: Config file syntax is incorrect")
+        except ConfigSyntaxError as err:
+            print(str(err))
+            sys.exit(1)
 
     def parse_router_id(self):
         try:
@@ -155,25 +166,23 @@ class ConfigData:
         for i in range(len(self.outputs)):
             try:
                 router = [int(x) for x in self.outputs[i].split('-')]
+                self.outputs[i] = router
             except ValueError:
                 print("ValueError: Outputs should only contain hyphen separated ints")
                 sys.exit(1)
             else:
                 try:
                     if len(router) != 3:
-                        raise ConfigSyntaxError(
-                            "ConfigSyntaxError: Outputs should be of form: portNum-metric-routerID")
+                        raise ConfigSyntaxError("ConfigSyntaxError: Outputs should be of form: portNum-metric-routerID")
                     else:
-                        router = {'Port': router[0], 'Metric': router[1], 'ID': router[2]}
-                        if router['Port'] in self.input_ports:
-                            raise ConfigSyntaxError(
-                                "ConfigSyntaxError: Port numbers in outputs cannot be in inputs!")
+                        if router[0] in self.input_ports:
+                            raise ConfigSyntaxError("ConfigSyntaxError: Port numbers in outputs cannot be in inputs!")
                         else:
-                            self.check_port_num(router['Port'])
+                            self.check_port_num(router[0])
                 except ConfigSyntaxError as err:
                     print(str(err))
                     sys.exit(1)
-            self.outputs[i] = router
+        self.outputs = {router[2]: router[:2] for router in self.outputs}
 
     def check_port_num(self, port_num):
         try:
@@ -195,21 +204,22 @@ class ForwardingEntry:
         self.timeout_flag = 0
         self.update_timer = time()
 
+
 class RipRouter:
     """Class which simulates a router with attached neighbours, message transmit/receive and a forwarding table"""
 
     def __init__(self, router_config):
-        self.router_config = router_config
+        self.config = router_config
         self.input_sockets = []
         self.output_socket = None
         self.address = '127.0.0.1'
         self.forwarding_table = dict()
         self.start()
-        self.update_timer = self.timer_refresh(1)
+        self.update_timer = timer_refresh(1)
 
     def start(self):
         """Binds input sockets and sets the output socket to the first input socket (if it exists)"""
-        for input_port in self.router_config.input_ports:
+        for input_port in self.config.input_ports:
             try:
                 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
                 sock.bind((self.address, input_port))
@@ -225,12 +235,20 @@ class RipRouter:
             sys.exit(1)
         else:
             self.output_socket = self.input_sockets[0]
+            own_entry = ForwardingEntry(self.config.router_id, self.output_socket, 0)
+            self.forwarding_table[self.config.router_id] = own_entry
 
     def update_forwarding_entry(self, router_id, entry):
         """Updates an entry to the forwarding table"""
         timeout_flag = 0
-        expir_timer = self.timer_refresh()
+        expir_timer = timer_refresh()
         self.forwarding_table[router_id] = entry
+
+    def send(self, router_id, data):
+        try:
+            self.output_socket.sendto(data, (self.address , self.forwarding_table[router_id].next_hop_port))
+        except OSError as err:
+            traceback.print_exc()
 
     def remove_forwarding_entry(self, router_id):
         """Removes an entry from the forwarding table"""
@@ -246,13 +264,13 @@ class RipDaemon:
     def __init__(self, router):
         self.router = router
         self.last_update = None
-
-    def start(self):
-
-        while True:
-            if time() - self.last_update >= UPDATE_FREQ:
-                self.send_updates()
-            elif
+    #
+    # def start(self):
+    #
+    #     while True:
+    #         if time() - self.last_update >= UPDATE_FREQ:
+    #             self.send_updates()
+    #         elif
 
 
 def timer_refresh(type=0):
@@ -266,9 +284,7 @@ def timer_refresh(type=0):
 
 def main():
     router_config = ConfigData()
-    print(router_config.router_id)
-    print(router_config.input_ports)
-    print(router_config.outputs)
+    print(router_config)
     router = RipRouter(router_config)
     RipDaemon(router).start
 
