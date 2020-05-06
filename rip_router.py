@@ -6,8 +6,6 @@ import select
 from time import time
 import random
 
-UPDATE_FREQ = 30
-
 """
 TODO:
     - Start the 321 assignment
@@ -17,6 +15,11 @@ TODO:
     - Implementation of RIP lmao
 
 """
+
+UPDATE_FREQ = 30
+TIMEOUT = 180
+GARBAGE = 300
+INFINITY = 16
 
 
 class ConfigSyntaxError(Exception):
@@ -225,8 +228,8 @@ class RipRouter:
 
     def update_forwarding_entry(self, router_id, entry):
         """Updates an entry to the forwarding table"""
-        timeoutflag = 0
-        expirytimer = self.timer_refresh()
+        timeout_flag = 0
+        expir_timer = self.timer_refresh()
         self.forwarding_table[router_id] = entry
 
     def remove_forwarding_entry(self, router_id):
@@ -237,6 +240,21 @@ class RipRouter:
             print("KeyError: Router {} is not in the forwarding table".format(err))
 
 
+class RipDaemon:
+    """RIP routing daemon which contains a router class which it controls"""
+
+    def __init__(self, router):
+        self.router = router
+        self.last_update = None
+
+    def start(self):
+
+        while True:
+            if time() - self.last_update >= UPDATE_FREQ:
+                self.send_updates()
+            elif
+
+
 def timer_refresh(type=0):
     # type = 1 : returns a initial start time +- 0-5 seconds of offset
     # type = 2: no randomness, used for route timers
@@ -245,19 +263,6 @@ def timer_refresh(type=0):
     else:
         return time()
 
-
-class RipDaemon:
-    """RIP routing daemon which contains a router class which it controls"""
-
-    def __init__(self, router):
-        self.router = router
-        self.last_update = None
-    # def start(self):
-        #
-        # while True:
-        #     if time() - self.last_update >= UPDATE_FREQ:
-        #         self.send_updates()
-        #
 
 def main():
     router_config = ConfigData()
