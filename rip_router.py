@@ -2,7 +2,7 @@ import sys
 import re
 import socket
 import traceback
-import select
+from select import select
 from time import time
 import random
 
@@ -254,7 +254,7 @@ class RipRouter:
 
     def update_forwarding_entry(self, router_id, entry):
         """Updates an entry to the forwarding table"""
-        timeout_flag = 0
+        entry.timeout_flag = 0
         expir_timer = timer_refresh()
         self.forwarding_table[router_id] = entry
 
@@ -279,18 +279,32 @@ class RipDaemon:
     def __init__(self, router):
         self.router = router
         self.last_update = None
+        self.timing_queue = []
 
     def start(self):
-
         while True:
-            inputsockets, , exceptlist = select(self.router.inputsocket, self.
-            if time() - self.last_update >= UPDATE_FREQ:
-                self.send_updates()
-            elif
+            if False:
+                pass
+            elif False:
+                pass
+            else:
+                try:
+                    readable, _, _ = select(self.router.input_sockets, [], [], timeout=None) # timeout will actually be equal to something off of timing queue just not sure how to implement yet
+                except OSError as err:
+                    traceback.print_exc()
+                    print(str(err))
+                else:
+                    # do the thing
+                    if not readable:
+                        #timeout happened do the thing
+                        pass
+                    else:
+                        #do the other thing
+                        pass
     def update(self):
         # sends update packets to all neighbouring routers
-        for neighbour in self.router.router_config.outputs.keys():
-            data=RipPacket(self.router.router_config.router_id,
+        for neighbour in self.router.config.outputs.keys():
+            data=RipPacket(self.router.config.router_id,
                            self.router.forwarding_table, ).construct()
             self.router.send(data, neighbour)
         self.router.update_timer=timer_refresh(1)  # reset update timer
