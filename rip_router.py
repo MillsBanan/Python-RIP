@@ -3,7 +3,7 @@ import re
 import socket
 import traceback
 import select
-import time
+from time import time
 import random
 
 """
@@ -15,6 +15,11 @@ TODO:
     - Implementation of RIP lmao
 
 """
+
+UPDATE_FREQ = 30
+TIMEOUT = 180
+GARBAGE = 300
+INFINITY = 16
 
 
 class ConfigSyntaxError(Exception):
@@ -221,14 +226,6 @@ class RipRouter:
         else:
             self.outputsocket = self.inputsocket[0]
 
-    def timer_refresh(type=0):
-        # type = 1 : returns a initial start time +- 0-5 seconds of offset
-        # type = 2: no randomness, used for route timers
-        if type == 1:
-            return time.time() + (10 * random.randint(0, 5) - 5)
-        else:
-            return time.time()
-
     def update_forwarding_entry(self, router_id, entry):
         """Updates an entry to the forwarding table"""
         timeoutflag = 0
@@ -249,12 +246,22 @@ class RipDaemon:
     def __init__(self, router):
         self.router = router
         self.last_update = None
+
     def start(self):
 
         while True:
             if time() - self.last_update >= UPDATE_FREQ:
                 self.send_updates()
             elif
+
+
+def timer_refresh(type=0):
+    # type = 1 : returns a initial start time +- 0-5 seconds of offset
+    # type = 2: no randomness, used for route timers
+    if type == 1:
+        return time.time() + (10 * random.randint(0, 5) - 5)
+    else:
+        return time.time()
 
 
 def main():
