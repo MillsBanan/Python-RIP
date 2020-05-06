@@ -5,11 +5,11 @@ import socket
 import traceback
 import select
 
+UPDATE_FREQ = 20
+
+
 """
 TODO:
-    - Start the 321 assignment
-
-    - Write a proper docstring
 
     - Implementation of RIP lmao
 
@@ -218,9 +218,9 @@ class RipRouter:
             sys.exit(1)
         else:
             self.output_socket = self.input_sockets[0]
-            for neighbour in self.router_config.outputs:
-                entry = ForwardingEntry(neighbour["ID"], neighbour["Port"], neighbour["Metric"])
-                self.add_forwarding_entry(entry.next_hop_id, entry)
+            # for neighbour in self.router_config.outputs:
+            #     entry = ForwardingEntry(neighbour["ID"], neighbour["Port"], neighbour["Metric"])
+            #     self.forwarding_table[entry.next_hop_id] = entry
 
     def send(self, data, router_id):
         """Send data to a neighbouring router by router ID"""
@@ -229,8 +229,8 @@ class RipRouter:
         except KeyError as err:
             print("KeyError: Router {} is not in the forwarding table".format(err))
 
-    def add_forwarding_entry(self, router_id, entry):
-        """Adds an entry to the forwarding table"""
+    def update_forwarding_entry(self, router_id, entry):
+        """Updates an entry to the forwarding table"""
         self.forwarding_table[router_id] = entry
 
     def remove_forwarding_entry(self, router_id):
@@ -254,10 +254,13 @@ class RipDaemon:
 
     def __init__(self, router):
         self.router = router
-
+        self.last_update = None
     def start(self):
-        # starts the daemon loop
-        pass
+
+        while True:
+            if time() - self.last_update >= UPDATE_FREQ:
+                self.send_updates()
+            elif
 
 
 def main():
