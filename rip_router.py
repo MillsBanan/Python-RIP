@@ -270,8 +270,7 @@ class RipRouter:
 
     def send(self, router_id, data):
         try:
-            self.output_socket.sendto(
-                data, (self.address, self.config.outputs[router_id][0])
+            self.output_socket.sendto(data, (self.address, self.config.outputs[router_id][0]))
         except OSError as err:
             traceback.print_exc()
             print(err)
@@ -325,7 +324,7 @@ class RipDaemon:
     def process_input(self, packet):
         # process a packet which has been received in one of the input buffers
         sourceid, entries=RipPacket().deconstruct(packet)
-        try
+        try:
             if not sourceid in self.router.config.output.keys():
                 raise RouterError(
                     "Router received a packet from Router {} which is not a neighbour router".format(sourceid))
@@ -335,15 +334,15 @@ class RipDaemon:
                 addedcost=self.router.config.outputs[entries[destination].next_hop_id][1]
                 entries[destination].metric += addedcost  # adds link cost to each entries metric
                 if destination in self.router.forwardingtable.keys():
-                    if self.router.forwardingtable[destination].timeout_flag == 1 or
-                    self.router.forwardingtable[destination].metric > entries[destination].metric or
+                    if self.router.forwardingtable[destination].timeout_flag == 1 or \
+                    self.router.forwardingtable[destination].metric > entries[destination].metric or \
                     self.router.forwardingtable[destination].next_hop_id == sourceid:
                         self.router.update_forwarding_entry(destination, entries[destination])
                 else:
                     self.router.update_forwarding_entry(destination, entries[destination])
         except RouterError as err:
-                print(str(err))
-                sys.exit(1)
+            print(str(err))
+            sys.exit(1)
 
 
 
@@ -367,13 +366,12 @@ class RipPacket:
             packet += self.construct_rip_entry(router_id, info)
         return bytearray(packet)
 
-    def construct_rip_entry(router_id, info):
-        return
-        [0, 2, 0, 0,  # AFI = 2 for IP
-        0, 0, router_id >> 8, router_id & 0xFF,  # router_id is only 16 bits
-        0, 0, 0, 0,
-        0, 0, 0, 0,
-        info.metric >> 24, (info.metric >> 16) & 0xFF, (info.metric >> 8) & 0xFF, info.metric & 0xFF]
+    def construct_rip_entry(self, router_id, info):
+        return [0, 2, 0, 0,  # AFI = 2 for IP
+                0, 0, router_id >> 8, router_id & 0xFF,  # router_id is only 16 bits
+                0, 0, 0, 0,
+                0, 0, 0, 0,
+                info.metric >> 24, (info.metric >> 16) & 0xFF, (info.metric >> 8) & 0xFF, info.metric & 0xFF]
 
     def deconstruct_rip_entry(entry):
         pass
