@@ -320,48 +320,61 @@ class RipDaemon:
     def update(self):
         # sends update packets to all neighbouring routers
         for neighbour in self.router.config.outputs.keys():
-            packet=RipPacket(self.router.config.router_id,
-                             self.router.forwarding_table, ).construct()
+            packet = RipPacket(self.router.config.router_id,
+                               self.router.forwarding_table, ).construct()
             self.router.send(neighbour, packet)
-        self.router.update_timer=timer_refresh(1)  # reset update timer
+        self.router.update_timer = timer_refresh(1)  # reset update timer
 
     def process_input(self, packet):
         # process a packet which has been received in one of the input buffers
-        sourceid, entries=RipPacket().deconstruct(packet)
+        sourceid, entries = RipPacket().deconstruct(packet)
         try:
-            if not sourceid in self.router.config.output.keys():
+            if sourceid not in self.router.config.output.keys():
                 raise RouterError(
                     "Router received a packet from Router {} which is not a neighbour router".format(sourceid))
             # include a forwarding entry for the router which sent the packet
-            entries[sourceid]=ForwardingEntry(sourceid, 0)
+            entries[sourceid] = ForwardingEntry(sourceid, 0)
+
             for destination in entries.keys():  # check for each entry if its better than what we got
-                addedcost=self.router.config.outputs[entries[destination].next_hop_id][1]
-                entries[destination].metric += addedcost  # adds link cost to each entries metric
-                if destination in self.router.forwardingtable.keys():
-                    if self.router.forwardingtable[destination].timeout_flag == 1 or \
-                    self.router.forwardingtable[destination].metric > entries[destination].metric or \
-                    self.router.forwardingtable[destination].next_hop_id == sourceid:
-                        self.router.update_forwarding_entry(destination, entries[destination])
-                else:
-                    self.router.update_forwarding_entry(destination, entries[destination])
+                self.update_routes(sourceid, destination, entries[destination])
         except RouterError as err:
             print(str(err))
+
+    def update_routes(self, sourceid, destination, route):
+        if destination != self.router.config.router_id: # prevents adding self to forwarding table
+            added_cost = self.router.config.outputs[route.next_hop_id][1]
+            # adds link cost to each entries metric
+            route.metric = min(added_cost + route.metric, INFINITY)
+            if destination in self.router.forwardingtable.keys(): # if destination is already in forwarding table
+                if self.router.forwardingtable[destination].next_hop_id == sourceid: # if next hop is the sender of the new route
+                    route.next_hop_id = sourceid
+                    self.router.update_forwarding_entry(destination, route)
+                    if route.metric == INFINITY: # if the new metric for the route is infinity
+                        self.update()
+                elif self.router.forwardingtable[destination].metric >= route.metric:
+                    route.next_hop_id = sourceid
+                    self.router.update_forwarding_entry(destination, route)
+
+            elif route.metric < INFINITY:
+                route.next_hop_id = sourceid
+                self.router.update_forwarding_entry(destination, route)
 
 
 class RipPacket:
     def __init__(self, sourceid=None, entries=None, destinationid=None):
-        self.sourceid=sourceid
+        self.sourceid = sourceid
         # poisoned reverse, if the entry's next hop is the destination, it sets the metric to 'infinity'
-        for router_id in entries.keys():
-            if entries[router_id].next_hop_id == destinationid:
-                entries[router_id].metric == INFINITY
+        if entries is not None:
+            for router_id in entries.keys():
+                if entries[router_id].next_hop_id == destinationid:
+                    entries[router_id].metric == INFINITY
 
-        self.entries=entries
+        self.entries = entries
 
     def construct(self):
 
         # builds packet with the information in the object and returns a bytearray
-        packet=[2, 2]  # packet type is always 2, and version is always 1
+        packet = [2, 2]  # packet type is always 2, and version is always 1
         # 3rd & 4th bytes are now senders router ID
         packet += [self.sourceid >> 8, self.sourceid & 0xFF]
         for router_id, info in self.entries.items():
@@ -375,11 +388,13 @@ class RipPacket:
                 0, 0, 0, 0,
                 info.metric >> 24, (info.metric >> 16) & 0xFF, (info.metric >> 8) & 0xFF, info.metric & 0xFF]
 
-    def deconstruct_rip_entry(entry):
+    def deconstruct_rip_entry(self, entry):
         pass
+
     def deconstruct(bytearray):
         pass
         # deconstructs RIP packet and sets & returns sourceid and entries fields
+        return None, None
 
 
 def timer_refresh(type=0):
