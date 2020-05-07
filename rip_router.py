@@ -209,6 +209,7 @@ class ConfigData:
         except ConfigSyntaxError as err:
             print(str(err))
             sys.exit(1)
+        print(self.outputs)
         self.outputs = {router[2]: router[:2] for router in self.outputs}
 
     def check_port_num(self, port_num):
@@ -308,14 +309,14 @@ class RipDaemon:
                 self.triggered_update = -1  # set to -1 until another triggered update event occurs
 
             # TIMEOUT AND GARBAGE HANDLER #
-            for destination, entry in self.router.forwarding_table.values():  # iterate through forwarding table
-                if entry.timeout_flag == 0 and (
-                        entry.update_timer - current_time) > TIMEOUT:  # if timer exceeds TIMEOUT
+            for destination, entry in self.router.forwarding_table.items():  # iterate through forwarding table
+                if entry.timeout_flag == 0 and \
+                        (entry.update_timer - current_time) > TIMEOUT:  # if timer exceeds TIMEOUT
                     entry.metric = INFINITY
                     self.router.update_forwarding_entry(destination, entry, 1)
                     self.schedule_triggered_update()
-                if entry.timeout_flag == 1 and (
-                        entry.update_timer - current_time) > GARBAGE:  # if timer exceeds GARBAGE
+                elif entry.timeout_flag == 1 and \
+                        (entry.update_timer - current_time) > GARBAGE:  # if timer exceeds GARBAGE
                     self.router.remove_forwarding_entry(destination)
 
             # INPUT SOCKET HANDLER #
@@ -395,7 +396,7 @@ class RipPacket:
     def construct(self):
 
         # builds packet with the information in the object and returns a bytearray
-        packet = [2, 2]  # packet type is always 2, and version is always 1
+        packet = [2, 2]  # packet type is always 2, and version is always 2
         # 3rd & 4th bytes are now senders router ID
         packet += [self.sourceid >> 8, self.sourceid & 0xFF]
         for router_id, info in self.entries.items():
