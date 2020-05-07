@@ -241,7 +241,6 @@ class RipRouter:
         self.address = '127.0.0.1'
         self.forwarding_table = dict()
         self.start()
-        self.update_timer = timer_refresh(1)
 
     def start(self):
         """Binds input sockets and sets the output socket to the first input socket (if it exists)"""
@@ -256,9 +255,9 @@ class RipRouter:
         self.output_socket = self.input_sockets[0]
         self.print_forwarding_table()
 
-    def update_forwarding_entry(self, router_id, entry):
+    def update_forwarding_entry(self, router_id, entry, timeout=0):
         """Updates an entry to the forwarding table"""
-        entry.timeout_flag = 0
+        entry.timeout_flag = timeout
         entry.update_timer = timer_refresh()
         self.forwarding_table[router_id] = entry
 
@@ -294,36 +293,55 @@ class RipDaemon:
         self.router = router
         self.last_update = None
         self.update()
+        self.last_update = timer_refresh(1)
+        self.triggered_update = -1  # timer for triggered updates
+        logger("RIP Daemon initialized, starting event loop..")
+        self.event_loop()
 
     def event_loop(self):
         while True:
-            if False:
-                pass
-            elif False:
-                pass
-            else:
-                try:
-                    readable, _, _ = select(self.router.input_sockets, [], [], 1)
-                    # timeout will actually be equal to something off of timing queue just not sure how to implement yet
-                except OSError as err:
-                    traceback.print_exc()
-                    print(str(err))
-                else:
-                    if not readable:
-                        continue
-                    else:
-                        for sock in readable:
-                            packet = sock.recv(512)
-                            self.process_input(packet)
+            current_time = time()
+            # SCHEDULED AND TRIGGERED UPDATE HANDLER #
+            if (current_time - self.last_update) > UPDATE_FREQ \
+                    or ((current_time - self.triggered_update) > 0 and not self.triggered_update == -1):
+                self.update()
+                self.last_update = timer_refresh(1)
+                self.triggered_update = -1  # set to -1 until another triggered update event occurs
 
+            # TIMEOUT AND GARBAGE HANDLER #
+            for destination, entry in self.router.forwarding_table.values():  # iterate through forwarding table
+                if entry.timeout_flag == 0 and (
+                        entry.update_timer - current_time) > TIMEOUT:  # if timer exceeds TIMEOUT
+                    entry.metric = INFINITY
+                    self.router.update_forwarding_entry(destination, entry, 1)
+                    self.schedule_triggered_update()
+                if entry.timeout_flag == 1 and (
+                        entry.update_timer - current_time) > GARBAGE:  # if timer exceeds GARBAGE
+                    self.router.remove_forwarding_entry(destination)
+
+            # INPUT SOCKET HANDLER #
+            try:
+                readable, _, _ = select(self.router.input_sockets, [], [], 1)
+                # timeout will actually be equal to something off of timing queue just not sure how to implement yet
+            except OSError as err:
+                traceback.print_exc()
+                print(str(err))
+            else:
+                if not readable:
+                    continue
+                else:
+                    for sock in readable:
+                        packet = sock.recv(512)
+                        self.process_input(packet)
 
     def update(self):
         # sends update packets to all neighbouring routers
+        logger("Sending routing update to neighbouring routers:")
+        self.router.print_forwarding_table()
         for neighbour in self.router.config.outputs.keys():
             packet = RipPacket(self.router.config.router_id,
                                self.router.forwarding_table, ).construct()
             self.router.send(neighbour, packet)
-        self.router.update_timer = timer_refresh(1)  # reset update timer
 
     def process_input(self, packet):
         # process a packet which has been received in one of the input buffers
@@ -340,18 +358,24 @@ class RipDaemon:
         except RouterError as err:
             print(str(err))
 
+    def schedule_triggered_update(self):
+        self.triggered_update = time() + (4 * random.random() + 1)  # set triggered update timer 1-5 seconds
+
     def update_routes(self, sourceid, destination, route):
-        if destination != self.router.config.router_id: # prevents adding self to forwarding table
+        if destination != self.router.config.router_id:  # prevents adding self to forwarding table
             added_cost = self.router.config.outputs[route.next_hop_id][1]
             # adds link cost to each entries metric
             route.metric = min(added_cost + route.metric, INFINITY)
-            if destination in self.router.forwardingtable.keys():  # if destination is already in forwarding table
-                if self.router.forwardingtable[destination].next_hop_id == sourceid:  # if next hop is the sender of the new route
+            if destination in self.router.forwarding_table.keys():  # if destination is already in forwarding table
+                if self.router.forwarding_table[
+                    destination].next_hop_id == sourceid:  # if next hop is the sender of the new route
                     route.next_hop_id = sourceid
-                    self.router.update_forwarding_entry(destination, route)
-                    if route.metric == INFINITY: # if the new metric for the route is infinity
-                        self.update()
-                elif self.router.forwardingtable[destination].metric >= route.metric:
+                    if route.metric == INFINITY:  # a route no longer exists
+                        self.router.update_forwarding_entry(destination, route, 1)  # set route to 1
+                        self.schedule_triggered_update()
+                    else:  # the route via the same next_hop has changed to a different metric
+                        self.router.update_forwarding_entry(destination, route)
+                elif self.router.forwarding_table[destination].metric >= route.metric:
                     route.next_hop_id = sourceid
                     self.router.update_forwarding_entry(destination, route)
 
@@ -444,7 +468,8 @@ def main():
     router_config = ConfigData()
     print(router_config)
     router = RipRouter(router_config)
-    # RipDaemon(router).start
+    router.start()
+    RipDaemon(router)
 
 
 if __name__ == "__main__":
