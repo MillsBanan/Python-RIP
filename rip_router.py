@@ -193,8 +193,7 @@ class ConfigData:
             else:
                 try:
                     if len(router) != 3:
-                        raise ConfigSyntaxError(
-                            "Outputs should be of form: portNum-metric-routerID")
+                        raise ConfigSyntaxError("Outputs should be of form: portNum-metric-routerID")
                     else:
                         if router[0] in self.input_ports:
                             raise ConfigSyntaxError("Port numbers in outputs cannot be in inputs!")
@@ -214,8 +213,7 @@ class ConfigData:
     def check_port_num(self, port_num):
         try:
             if port_num < 1024 or port_num > 64000:
-                raise ConfigSyntaxError(
-                    "ConfigSyntaxError: Port number in config is outside acceptable range")
+                raise ConfigSyntaxError("ConfigSyntaxError: Port number in config is outside acceptable range")
         except ConfigSyntaxError as err:
             print(str(err))
             sys.exit(1)
@@ -308,14 +306,14 @@ class RipDaemon:
                 self.triggered_update = -1  # set to -1 until another triggered update event occurs
 
             # TIMEOUT AND GARBAGE HANDLER #
-            for destination, entry in self.router.forwarding_table.values():  # iterate through forwarding table
-                if entry.timeout_flag == 0 and (
-                        entry.update_timer - current_time) > TIMEOUT:  # if timer exceeds TIMEOUT
+            for destination, entry in self.router.forwarding_table.items():  # iterate through forwarding table
+                if entry.timeout_flag == 0 and \
+                        (entry.update_timer - current_time) > TIMEOUT:  # if timer exceeds TIMEOUT
                     entry.metric = INFINITY
                     self.router.update_forwarding_entry(destination, entry, 1)
                     self.schedule_triggered_update()
-                if entry.timeout_flag == 1 and (
-                        entry.update_timer - current_time) > GARBAGE:  # if timer exceeds GARBAGE
+                elif entry.timeout_flag == 1 and \
+                        (entry.update_timer - current_time) > GARBAGE:  # if timer exceeds GARBAGE
                     self.router.remove_forwarding_entry(destination)
 
             # INPUT SOCKET HANDLER #
@@ -445,11 +443,22 @@ class RipPacket:
             router_id = entry[6] << 8 + entry[7]
             return ForwardingEntry(next_hop, metric), router_id
 
-    def header_valid(self, packet):
-        pass
+    def header_valid(self, header):
+        if not (header[0] == 2 and header[1] == 2 and (1 < header[2] >> 8 + header[3] < 64000)):
+            return False
+        else:
+            return True
 
     def entry_valid(self, entry):
-        pass
+        if not (entry[1] == 2 and
+                entry[2] + entry[3] == 0 and
+                (1 < entry[4] << 8 + entry[5] < 64000) and
+                entry[6] + entry[7] + entry[8] + entry[9] == 0 and
+                entry[10] + entry[11] + entry[12] + entry[13] == 0 and
+                (1 <= entry[19] <= 16)):
+            return False
+        else:
+            return True
 
 
 def timer_refresh(type=0):
