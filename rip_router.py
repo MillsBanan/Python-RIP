@@ -291,7 +291,6 @@ class RipDaemon:
 
     def __init__(self, router):
         self.router = router
-        self.last_update = None
         self.update()
         self.last_update = timer_refresh(1)
         self.triggered_update = -1  # timer for triggered updates
@@ -346,17 +345,18 @@ class RipDaemon:
     def process_input(self, packet):
         # process a packet which has been received in one of the input buffers
         sourceid, entries = RipPacket().deconstruct(packet)
-        try:
-            if sourceid not in self.router.config.output.keys():
-                raise RouterError(
-                    "Router received a packet from Router {} which is not a neighbour router".format(sourceid))
-            # include a forwarding entry for the router which sent the packet
-            entries[sourceid] = ForwardingEntry(sourceid, 0)
+        if sourceid is not None and entries is not None:  # valid packet received
+            try:
+                if sourceid not in self.router.config.output.keys():
+                    raise RouterError(
+                        "Router received a packet from Router {} which is not a neighbour router".format(sourceid))
+                # include a forwarding entry for the router which sent the packet
+                entries[sourceid] = ForwardingEntry(sourceid, 0)
 
-            for destination in entries.keys():  # check for each entry if its better than what we got
-                self.update_routes(sourceid, destination, entries[destination])
-        except RouterError as err:
-            print(str(err))
+                for destination in entries.keys():  # check for each entry if its better than what we got
+                    self.update_routes(sourceid, destination, entries[destination])
+            except RouterError as err:
+                print(str(err))
 
     def schedule_triggered_update(self):
         self.triggered_update = time() + (4 * random.random() + 1)  # set triggered update timer 1-5 seconds
@@ -367,20 +367,17 @@ class RipDaemon:
             # adds link cost to each entries metric
             route.metric = min(added_cost + route.metric, INFINITY)
             if destination in self.router.forwarding_table.keys():  # if destination is already in forwarding table
-                if self.router.forwarding_table[
-                    destination].next_hop_id == sourceid:  # if next hop is the sender of the new route
-                    route.next_hop_id = sourceid
+                if self.router.forwarding_table[destination].next_hop_id == sourceid:
+                    # if next hop is the sender of the new route
                     if route.metric == INFINITY:  # a route no longer exists
                         self.router.update_forwarding_entry(destination, route, 1)  # set route to 1
                         self.schedule_triggered_update()
                     else:  # the route via the same next_hop has changed to a different metric
                         self.router.update_forwarding_entry(destination, route)
                 elif self.router.forwarding_table[destination].metric >= route.metric:
-                    route.next_hop_id = sourceid
                     self.router.update_forwarding_entry(destination, route)
 
             elif route.metric < INFINITY:
-                route.next_hop_id = sourceid
                 self.router.update_forwarding_entry(destination, route)
 
 
@@ -391,7 +388,7 @@ class RipPacket:
         if entries is not None:
             for router_id in entries.keys():
                 if entries[router_id].next_hop_id == destinationid:
-                    entries[router_id].metric == INFINITY
+                    entries[router_id].metric = INFINITY
 
         self.entries = entries
 
@@ -459,7 +456,7 @@ def timer_refresh(type=0):
     # type = 1 : returns a initial start time +- 0-5 seconds of offset
     # type = 2: no randomness, used for route timers
     if type == 1:
-        return time() + (10 * random.randint(0, 5) - 5)
+        return time() + (10 * random.random() - 5)
     else:
         return time()
 
@@ -468,7 +465,6 @@ def main():
     router_config = ConfigData()
     print(router_config)
     router = RipRouter(router_config)
-    router.start()
     RipDaemon(router)
 
 
