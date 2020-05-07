@@ -12,9 +12,6 @@ TODO:
     - Write a proper docstring
     - Implementation of RIP lmao
     - bruh we need to do a check that the metric in the config is between 1 and 15
-    - best plan for the event handling is to use thread.timer according to jim
-    - we don't need a forwarding table entry for itself. Just set so when routers
-    get a RIP packet they add the sources ID to the forwarding table if in the outputs
     - also maybe a check in the forwardingtable class when you init, that validates metric size?
 
     Shai:
@@ -233,10 +230,6 @@ class ForwardingEntry:
         self.timeout_flag = 0
         self.update_timer = timer_refresh()
 
-    def __str__(self):
-        return "Next hop router ID: {}\n" \
-               "Metric: {}\n".format(self.next_hop_id, self.metric)
-
 
 class RipRouter:
     """Class which simulates a router with attached neighbours, message transmit/receive and a forwarding table"""
@@ -261,6 +254,7 @@ class RipRouter:
                 print(str(err))
                 sys.exit(1)
         self.output_socket = self.input_sockets[0]
+        self.print_forwarding_table()
 
     def update_forwarding_entry(self, router_id, entry):
         """Updates an entry to the forwarding table"""
@@ -282,6 +276,16 @@ class RipRouter:
         except KeyError as err:
             print("KeyError: Router {} is not in the forwarding table".format(err))
 
+    def print_forwarding_table(self):
+        logger("+================= FORWARDING TABLE ==================+")
+        logger("| ID | AFI | NEXT HOP | METRIC | TIMEOUT FLAG | TIMER |")
+        logger("+----|-----|----------|--------|--------------|-------+")
+        for key in self.forwarding_table.keys():
+            entry = self.forwarding_table[key]
+            logger(entry)
+            logger("+----|-----|----------|--------|--------------|-------+")
+        logger("+=====================================================+")
+
 
 class RipDaemon:
     """RIP routing daemon which contains a router class which it controls"""
@@ -289,9 +293,9 @@ class RipDaemon:
     def __init__(self, router):
         self.router=router
         self.last_update=None
-        self.timing_queue=[]
+        self.update()
 
-    def start(self):
+    def event_loop(self):
         while True:
             if False:
                 pass
@@ -299,19 +303,19 @@ class RipDaemon:
                 pass
             else:
                 try:
-                    readable, _, _=select(self.router.input_sockets, [], [], timeout=None)
+                    readable, _, _ = select(self.router.input_sockets, [], [], 1)
                     # timeout will actually be equal to something off of timing queue just not sure how to implement yet
                 except OSError as err:
                     traceback.print_exc()
                     print(str(err))
                 else:
-                    # do the thing
                     if not readable:
-                        # timeout happened do the thing
-                        pass
+                        continue
                     else:
-                        # do the other thing
-                        pass
+                        for sock in readable:
+                            packet = sock.recv(512)
+                            self.process_input(packet)
+
 
     def update(self):
         # sends update packets to all neighbouring routers
@@ -342,8 +346,6 @@ class RipDaemon:
                     self.router.update_forwarding_entry(destination, entries[destination])
         except RouterError as err:
             print(str(err))
-            sys.exit(1)
-
 
 
 class RipPacket:
@@ -376,6 +378,7 @@ class RipPacket:
     def deconstruct_rip_entry(entry):
         pass
     def deconstruct(bytearray):
+        pass
         # deconstructs RIP packet and sets & returns sourceid and entries fields
 
 
@@ -389,9 +392,9 @@ def timer_refresh(type=0):
 
 
 def main():
-    router_config=ConfigData()
+    router_config = ConfigData()
     print(router_config)
-    router=RipRouter(router_config)
+    router = RipRouter(router_config)
     # RipDaemon(router).start
 
 
