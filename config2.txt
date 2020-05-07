@@ -1,5 +1,5 @@
 // Config for router 2
 
 router-id 2
-input-ports 1026, 2000, 3000
-outputs 1025-1-1, 2001-1-3, 3001-1-4
+input-ports 2001, 2003, 2004
+outputs 1025-1-1, 3002-1-3, 4002-1-4

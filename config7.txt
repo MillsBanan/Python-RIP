@@ -1,0 +1,5 @@
+// Config for router 7
+
+router-id 7
+input-ports 7006
+outputs 6007-1-6

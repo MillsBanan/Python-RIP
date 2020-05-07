@@ -5,7 +5,7 @@ import traceback
 from select import select
 from time import time
 import random
-
+import copy
 """
 TODO:
 
@@ -22,8 +22,8 @@ TODO:
 """
 
 UPDATE_FREQ = 10
-TIMEOUT = UPDATE_FREQ * 6
-GARBAGE = UPDATE_FREQ * 4
+TIMEOUT = 30
+GARBAGE = 60
 INFINITY = 16
 ENABLE_LOGGER = 1
 
@@ -134,7 +134,7 @@ class ConfigData:
                 elif line[0] == "input-ports":
                     self.input_ports = line[1:-1]
                 elif line[0] == "outputs":
-                    self.outputs = line[1:-1]
+                    self.outputs = line[1:]
                 else:
                     raise ConfigSyntaxError("Config file syntax is incorrect")
         except ConfigSyntaxError as err:
@@ -142,6 +142,7 @@ class ConfigData:
             sys.exit(1)
         self.parse_router_id()
         self.parse_input_ports()
+        print(self.outputs)
         self.parse_outputs()
         try:
             if None in [self.router_id, self.outputs, self.input_ports]:
@@ -208,7 +209,6 @@ class ConfigData:
         except ConfigSyntaxError as err:
             print(str(err))
             sys.exit(1)
-        print(self.outputs)
         self.outputs = {router[2]: router[:2] for router in self.outputs}
 
     def check_port_num(self, port_num):
@@ -230,7 +230,9 @@ class ForwardingEntry:
         self.update_timer = timer_refresh()
 
     def __str__(self):
-        return str(self.metric) + str(self.next_hop_id) + str(self.timeout_flag) + str(self.update_timer)
+        return "    {}     |    {}   |      {}       |   {}   |".format(self.next_hop_id, self.metric,
+                                                                         self.timeout_flag,
+                                                                        int(time() - self.update_timer))
 
 
 class RipRouter:
@@ -260,7 +262,8 @@ class RipRouter:
     def update_forwarding_entry(self, router_id, entry, timeout=0):
         """Updates an entry to the forwarding table"""
         entry.timeout_flag = timeout
-        entry.update_timer = timer_refresh()
+        if not timeout:
+            entry.update_timer = timer_refresh()
         self.forwarding_table[router_id] = entry
 
     def send(self, router_id, data):
@@ -278,14 +281,14 @@ class RipRouter:
             print("KeyError: Router {} is not in the forwarding table".format(err))
 
     def print_forwarding_table(self):
-        logger("+================= FORWARDING TABLE ==================+")
-        logger("| ID | AFI | NEXT HOP | METRIC | TIMEOUT FLAG | TIMER |")
-        logger("+----|-----|----------|--------|--------------|-------+")
-        for key in self.forwarding_table.keys():
+        logger("+============== FORWARDING TABLE ===============+")
+        logger("| ID | NEXT HOP | METRIC | TIMEOUT FLAG | TIMER |")
+        logger("+----|----------|--------|--------------|-------+")
+        for key in sorted(self.forwarding_table):
             entry = self.forwarding_table[key]
-            logger(entry)
-            logger("+----|-----|----------|--------|--------------|-------+")
-        logger("+=====================================================+")
+            logger("| {}  |".format(key) + str(entry))
+            logger("+----|----------|--------|--------------|-------+")
+        logger("+===============================================+\n")
 
 
 class RipDaemon:
@@ -296,12 +299,13 @@ class RipDaemon:
         self.update()
         self.last_update = timer_refresh(1)
         self.triggered_update = -1  # timer for triggered updates
-        logger("RIP Daemon initialized, starting event loop..")
+        logger("RIP Daemon initialized. Starting routing loop\n")
         self.event_loop()
 
     def event_loop(self):
         while True:
             current_time = time()
+            logger("+                                               +")
             # SCHEDULED AND TRIGGERED UPDATE HANDLER #
             if (current_time - self.last_update) > UPDATE_FREQ or \
                     ((current_time - self.triggered_update) > 0 and not self.triggered_update == -1):
@@ -311,15 +315,17 @@ class RipDaemon:
 
             # TIMEOUT AND GARBAGE HANDLER #
             for destination, entry in self.router.forwarding_table.items():  # iterate through forwarding table
-                if entry.timeout_flag == 0 and \
-                        (entry.update_timer - current_time) > TIMEOUT:  # if timer exceeds TIMEOUT
+                if entry.timeout_flag == 0 and (current_time - entry.update_timer) > TIMEOUT:  # if timer exceeds TIMEOUT
                     entry.metric = INFINITY
                     self.router.update_forwarding_entry(destination, entry, 1)
+                    self.router.print_forwarding_table()
                     self.schedule_triggered_update()
                 elif entry.timeout_flag == 1 and \
-                        (entry.update_timer - current_time) > GARBAGE:  # if timer exceeds GARBAGE
+                        (current_time - entry.update_timer) > GARBAGE:  # if timer exceeds GARBAGE
                     self.router.remove_forwarding_entry(destination)
-
+                    logger("Removed dead entry(ies) from table...\n")
+                    self.router.print_forwarding_table()
+                    break  # if this isn't here a dict item is removed while iterating the dict which is the bad tru tru
             # INPUT SOCKET HANDLER #
             try:
                 readable, _, _ = select(self.router.input_sockets, [], [], 1)
@@ -336,12 +342,12 @@ class RipDaemon:
                         self.process_input(packet)
 
     def update(self):
-        # sends update packets to all neighbouring rzouters
-        logger("Sending routing update to neighbouring routers:")
+        # sends update packets to all neighbouring routers
+        logger("Sending routing update to neighbouring routers...")
         self.router.print_forwarding_table()
         for neighbour in self.router.config.outputs.keys():
             packet = RipPacket(self.router.config.router_id,
-                               self.router.forwarding_table, ).construct()
+                               copy.deepcopy(self.router.forwarding_table), neighbour).construct()
             self.router.send(neighbour, packet)
 
     def process_input(self, packet):
@@ -372,13 +378,13 @@ class RipDaemon:
                 if self.router.forwarding_table[destination].next_hop_id == sourceid:
                     # if next hop is the sender of the new route
                     if route.metric == INFINITY:  # a route no longer exists
-                        self.router.update_forwarding_entry(destination, route, 1)  # set route to 1
-                        self.schedule_triggered_update()
+                        if self.router.forwarding_table[destination].metric != INFINITY:
+                            self.router.update_forwarding_entry(destination, route, 1)  # set route to 1
+                            self.schedule_triggered_update()
                     else:  # the route via the same next_hop has changed to a different metric
                         self.router.update_forwarding_entry(destination, route)
-                elif self.router.forwarding_table[destination].metric >= route.metric:
+                elif self.router.forwarding_table[destination].metric > route.metric:
                     self.router.update_forwarding_entry(destination, route)
-
             elif route.metric < INFINITY:
                 self.router.update_forwarding_entry(destination, route)
 
@@ -391,7 +397,6 @@ class RipPacket:
             for router_id in entries.keys():
                 if entries[router_id].next_hop_id == destinationid:
                     entries[router_id].metric = INFINITY
-
         self.entries = entries
 
     def construct(self):
@@ -427,7 +432,7 @@ class RipPacket:
                 logger("Packet payload contains 1 or more entries of incorrect size. Dropping packet...")
                 return None, None
             else:
-                i, j = 0, 19  # used for slicing the bytearray, will always cover 20 bytes of the bytearray
+                i, j = 0, 20  # used for slicing the bytearray, will always cover 20 bytes of the bytearray
                 for _ in range(len(payload) // 20):
                     entry, router_id = self.deconstruct_rip_entry(payload[i:j], source_id)
                     if not entry:
@@ -444,7 +449,7 @@ class RipPacket:
             return None, None
         else:
             metric = entry[19]
-            router_id = entry[6] << 8 + entry[7]
+            router_id = (entry[6] << 8) + entry[7]
             return ForwardingEntry(next_hop, metric), router_id
 
     def header_valid(self, header):
@@ -456,9 +461,9 @@ class RipPacket:
     def entry_valid(self, entry):
         if not (entry[1] == 2 and
                 entry[2] + entry[3] == 0 and
-                (1 < entry[4] << 8 + entry[5] < 64000) and
-                entry[6] + entry[7] + entry[8] + entry[9] == 0 and
-                entry[10] + entry[11] + entry[12] + entry[13] == 0):
+                # (1 < (entry[6] << 8) + entry[7] < 64000) and
+                entry[8] + entry[9] + entry[10] + entry[11] == 0 and
+                entry[12] + entry[13] + entry[14] + entry[15] == 0):
             return False
         else:
             return True

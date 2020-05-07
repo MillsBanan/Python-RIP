@@ -1,5 +1,5 @@
 // Config for router 1
 
 router-id 1
-input-ports 1025
-outputs 1026-1-2
+input-ports 1025, 1050
+outputs 2001-1-2, 5001-1-5
