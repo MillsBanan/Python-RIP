@@ -291,8 +291,8 @@ class RipDaemon:
     """RIP routing daemon which contains a router class which it controls"""
 
     def __init__(self, router):
-        self.router=router
-        self.last_update=None
+        self.router = router
+        self.last_update = None
         self.update()
 
     def event_loop(self):
@@ -345,8 +345,8 @@ class RipDaemon:
             added_cost = self.router.config.outputs[route.next_hop_id][1]
             # adds link cost to each entries metric
             route.metric = min(added_cost + route.metric, INFINITY)
-            if destination in self.router.forwardingtable.keys(): # if destination is already in forwarding table
-                if self.router.forwardingtable[destination].next_hop_id == sourceid: # if next hop is the sender of the new route
+            if destination in self.router.forwardingtable.keys():  # if destination is already in forwarding table
+                if self.router.forwardingtable[destination].next_hop_id == sourceid:  # if next hop is the sender of the new route
                     route.next_hop_id = sourceid
                     self.router.update_forwarding_entry(destination, route)
                     if route.metric == INFINITY: # if the new metric for the route is infinity
@@ -388,13 +388,47 @@ class RipPacket:
                 0, 0, 0, 0,
                 info.metric >> 24, (info.metric >> 16) & 0xFF, (info.metric >> 8) & 0xFF, info.metric & 0xFF]
 
-    def deconstruct_rip_entry(self, entry):
+    def deconstruct(self, packet):
+        # deconstructs RIP packet and sets & returns source id and entries fields
+        if len(packet) < 4:
+            logger("Packet size is less than minimum. Dropping packet...")
+            return None, None
+        elif not self.header_valid(packet):
+            logger("Invalid packet received. Dropping packet...")
+            return None, None
+        else:
+            entries = dict()
+            source_id = packet[3]
+            payload = packet[3:]
+            if payload % 20 != 0:
+                logger("Packet payload contains 1 or more entries of incorrect size. Dropping packet...")
+                return None, None
+            else:
+                i, j = 0, 19  # used for slicing the bytearray, will always cover 20 bytes of the bytearray
+                for _ in range(len(payload) // 20):
+                    entry, router_id = self.deconstruct_rip_entry(payload[i:j], source_id)
+                    if not entry:
+                        logger("Packet contained invalid entry. Dropping packet...")
+                        return None, None
+                    else:
+                        entries[router_id] = entry
+                        i = j
+                        j += 20
+                return source_id, entries
+
+    def deconstruct_rip_entry(self, entry, next_hop):
+        if not self.entry_valid(entry):
+            return None, None
+        else:
+            metric = entry[19]
+            router_id = entry[6] << 8 + entry[7]
+            return ForwardingEntry(next_hop, metric), router_id
+
+    def header_valid(self, packet):
         pass
 
-    def deconstruct(bytearray):
+    def entry_valid(self, entry):
         pass
-        # deconstructs RIP packet and sets & returns sourceid and entries fields
-        return None, None
 
 
 def timer_refresh(type=0):
