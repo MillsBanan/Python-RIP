@@ -325,7 +325,10 @@ class RipDaemon:
     def process_input(self, packet):
         # process a packet which has been received in one of the input buffers
         sourceid, entries=RipPacket().deconstruct(packet)
-        try sourceid in self.router.config.output.keys():
+        try
+            if not sourceid in self.router.config.output.keys():
+                raise RouterError(
+                    "Router received a packet from Router {} which is not a neighbour router".format(sourceid))
             # include a forwarding entry for the router which sent the packet
             entries[sourceid]=ForwardingEntry(sourceid, 0)
             for destination in entries.keys():  # check for each entry if its better than what we got
@@ -333,13 +336,14 @@ class RipDaemon:
                 entries[destination].metric += addedcost  # adds link cost to each entries metric
                 if destination in self.router.forwardingtable.keys():
                     if self.router.forwardingtable[destination].timeout_flag == 1 or
-                    self.router.forwardingtable[destination].metric > entries[destination].metric:
+                    self.router.forwardingtable[destination].metric > entries[destination].metric or
+                    self.router.forwardingtable[destination].next_hop_id == sourceid:
                         self.router.update_forwarding_entry(destination, entries[destination])
                 else:
                     self.router.update_forwarding_entry(destination, entries[destination])
         except RouterError as err:
-                print("KeyError: Received packet from a Router {} \
-                that is not a neighbouring router".format(err))
+                print(str(err))
+                sys.exit(1)
 
 
 
