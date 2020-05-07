@@ -333,7 +333,7 @@ class RipDaemon:
                         self.process_input(packet)
 
     def update(self):
-        # sends update packets to all neighbouring routers
+        # sends update packets to all neighbouring rzouters
         logger("Sending routing update to neighbouring routers:")
         self.router.print_forwarding_table()
         for neighbour in self.router.config.outputs.keys():
@@ -445,7 +445,7 @@ class RipPacket:
             return ForwardingEntry(next_hop, metric), router_id
 
     def header_valid(self, header):
-        if not (header[0] == 2 and header[1] == 2 and (1 < header[2] >> 8 + header[3] < 64000)):
+        if not (header[0] == 2 and header[1] == 2): #and (1 < header[2] >> 8 + header[3] < 64000)):
             return False
         else:
             return True
