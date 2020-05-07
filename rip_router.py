@@ -21,9 +21,9 @@ TODO:
 
 """
 
-UPDATE_FREQ = 30
-TIMEOUT = 180
-GARBAGE = 300
+UPDATE_FREQ = 10
+TIMEOUT = UPDATE_FREQ * 6
+GARBAGE = UPDATE_FREQ * 4
 INFINITY = 16
 ENABLE_LOGGER = 1
 
@@ -229,6 +229,9 @@ class ForwardingEntry:
         self.timeout_flag = 0
         self.update_timer = timer_refresh()
 
+    def __str__(self):
+        return str(self.metric) + str(self.next_hop_id) + str(self.timeout_flag) + str(self.update_timer)
+
 
 class RipRouter:
     """Class which simulates a router with attached neighbours, message transmit/receive and a forwarding table"""
@@ -346,7 +349,7 @@ class RipDaemon:
         sourceid, entries = RipPacket().deconstruct(packet)
         if sourceid is not None and entries is not None:  # valid packet received
             try:
-                if sourceid not in self.router.config.output.keys():
+                if sourceid not in self.router.config.outputs.keys():
                     raise RouterError(
                         "Router received a packet from Router {} which is not a neighbour router".format(sourceid))
                 # include a forwarding entry for the router which sent the packet
@@ -418,9 +421,9 @@ class RipPacket:
             return None, None
         else:
             entries = dict()
-            source_id = packet[3]
-            payload = packet[3:]
-            if payload % 20 != 0:
+            source_id = (packet[2] << 8) + packet[3]
+            payload = packet[4:]
+            if len(payload) % 20 != 0:
                 logger("Packet payload contains 1 or more entries of incorrect size. Dropping packet...")
                 return None, None
             else:
@@ -428,7 +431,7 @@ class RipPacket:
                 for _ in range(len(payload) // 20):
                     entry, router_id = self.deconstruct_rip_entry(payload[i:j], source_id)
                     if not entry:
-                        logger("Packet contained invalid entry. Dropping packet...")
+                        logger("Packet {} contained invalid entry. Dropping packet...".format(packet))
                         return None, None
                     else:
                         entries[router_id] = entry
@@ -445,7 +448,7 @@ class RipPacket:
             return ForwardingEntry(next_hop, metric), router_id
 
     def header_valid(self, header):
-        if not (header[0] == 2 and header[1] == 2 and (1 < header[2] >> 8 + header[3] < 64000)):
+        if not (header[0] == 2 and header[1] == 2):
             return False
         else:
             return True
@@ -455,8 +458,7 @@ class RipPacket:
                 entry[2] + entry[3] == 0 and
                 (1 < entry[4] << 8 + entry[5] < 64000) and
                 entry[6] + entry[7] + entry[8] + entry[9] == 0 and
-                entry[10] + entry[11] + entry[12] + entry[13] == 0 and
-                (1 <= entry[19] <= 16)):
+                entry[10] + entry[11] + entry[12] + entry[13] == 0):
             return False
         else:
             return True
