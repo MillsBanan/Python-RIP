@@ -294,6 +294,8 @@ class RipDaemon:
         self.update()
         self.last_update = timer_refresh(1)
         self.triggered_update = -1  # timer for triggered updates
+        logger("RIP Daemon initialized, starting event loop..")
+        self.event_loop()
 
     def event_loop(self):
         while True:
@@ -333,11 +335,12 @@ class RipDaemon:
 
     def update(self):
         # sends update packets to all neighbouring routers
+        logger("Sending routing update to neighbouring routers:")
+        self.router.print_forwarding_table()
         for neighbour in self.router.config.outputs.keys():
             packet = RipPacket(self.router.config.router_id,
                                self.router.forwarding_table, ).construct()
             self.router.send(neighbour, packet)
-        self.router.update_timer = timer_refresh(1)  # reset update timer
 
     def process_input(self, packet):
         # process a packet which has been received in one of the input buffers
@@ -430,7 +433,8 @@ def main():
     router_config = ConfigData()
     print(router_config)
     router = RipRouter(router_config)
-    # RipDaemon(router).start
+    router.start()
+    RipDaemon(router)
 
 
 if __name__ == "__main__":
