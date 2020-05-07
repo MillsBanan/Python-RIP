@@ -208,6 +208,7 @@ class ConfigData:
         except ConfigSyntaxError as err:
             print(str(err))
             sys.exit(1)
+        print(self.outputs)
         self.outputs = {router[2]: router[:2] for router in self.outputs}
 
     def check_port_num(self, port_num):
@@ -393,7 +394,7 @@ class RipPacket:
     def construct(self):
 
         # builds packet with the information in the object and returns a bytearray
-        packet = [2, 2]  # packet type is always 2, and version is always 1
+        packet = [2, 2]  # packet type is always 2, and version is always 2
         # 3rd & 4th bytes are now senders router ID
         packet += [self.sourceid >> 8, self.sourceid & 0xFF]
         for router_id, info in self.entries.items():
