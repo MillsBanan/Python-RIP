@@ -336,7 +336,7 @@ class RipDaemon:
                         (current_time - entry.update_timer) > GARBAGE:  # if timer exceeds GARBAGE
                     self.router.remove_forwarding_entry(destination)
                     self.router.print_forwarding_table()
-                    break  # if this isn't here a dict item is removed while iterating the dict which is the bad tru tru
+                    break  # this prevents the iteration after the dictionary has changed size, which would cause an error
             # INPUT SOCKET HANDLER #
             try:
                 readable, _, _ = select(self.router.input_sockets, [], [], 1)
@@ -377,7 +377,7 @@ class RipDaemon:
                 print(str(err))
 
     def schedule_triggered_update(self):
-        due_in = (4 * random.random() + 1)
+        due_in = ((UPDATE_FREQ/7.5) * random.random() + 1)
         self.triggered_update = time() + due_in  # set triggered update timer 1-5 seconds
         logger("Triggered update scheduled in {:.2f} seconds.".format(due_in), 1)
 
@@ -484,7 +484,8 @@ def timer_refresh(type=0):
     # type = 1 : returns a initial start time +- 0-5 seconds of offset
     # type = 2: no randomness, used for route timers
     if type == 1:
-        return time() + (10 * random.random() - 5)
+        randomshift = (2*(UPDATE_FREQ/6) * random.random() - (UPDATE_FREQ/6))
+        return time() + randomshift
     else:
         return time()
 
