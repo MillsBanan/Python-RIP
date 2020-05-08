@@ -1,5 +1,5 @@
 // Config for router 1
 
 router-id 4
-input-ports 4002, 4005
-outputs 2004-1-2, 5004-1-5
+input-ports 4001, 4002, 4004
+outputs 4000-4-3, 4003-6-7, 4005-2-5

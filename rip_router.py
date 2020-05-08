@@ -5,6 +5,7 @@ from select import select
 from time import time
 import random
 import copy
+
 """
 TODO:
 
@@ -21,18 +22,22 @@ TODO:
 """
 
 UPDATE_FREQ = 10
-TIMEOUT = UPDATE_FREQ*6
-GARBAGE = UPDATE_FREQ*4
+TIMEOUT = UPDATE_FREQ * 6
+GARBAGE = UPDATE_FREQ * 4
 INFINITY = 16
 ENABLE_LOGGER = 1
+START_TIME = time()  # start time (useful for logger function)
 
 
-def logger(message):
+def logger(message, showtime=0):
     """
     Logger function which can easily be enabled or disabled for printing logging information
     """
     if ENABLE_LOGGER:
-        print(message)
+        if showtime == 1:
+            print("{:.2f}s : ".format((time() - START_TIME)) + message)
+        else:
+            print(message)
 
 
 class ConfigSyntaxError(Exception):
@@ -112,7 +117,7 @@ class ConfigData:
         """Opens and stores the contents of the config file given as a parameter on the command line."""
         if len(sys.argv) != 2:
             print("Incorrect number of parameters given on command line.")
-            print("USAGE: rip_router.py config.txt")
+            print("USAGE: rip_router.py config1.txt")
             sys.exit(1)  # Program failure, wrong number of args given on CLI
         file_name = sys.argv[1]
         file_data = []
@@ -267,6 +272,7 @@ class RipRouter:
 
     def update_forwarding_entry(self, router_id, entry, timeout=0):
         """Updates an entry to the forwarding table"""
+        logger("Updating forwarding table entry for destination {}".format(router_id), 1)
         entry.timeout_flag = timeout
         entry.update_timer = timer_refresh()
         self.forwarding_table[router_id] = entry
@@ -280,6 +286,7 @@ class RipRouter:
     def remove_forwarding_entry(self, router_id):
         """Removes an entry from the forwarding table"""
         try:
+            logger("Router {} has been unreachable for too long, removing route..".format(router_id), 1)
             del self.forwarding_table[router_id]
         except KeyError as err:
             print("KeyError: Router {} is not in the forwarding table".format(err))
@@ -309,7 +316,7 @@ class RipDaemon:
     def event_loop(self):
         while True:
             current_time = time()
-            logger("+                                               +")
+
             # SCHEDULED AND TRIGGERED UPDATE HANDLER #
             if (current_time - self.last_update) > UPDATE_FREQ or \
                     ((current_time - self.triggered_update) > 0 and not self.triggered_update == -1):
@@ -319,7 +326,8 @@ class RipDaemon:
 
             # TIMEOUT AND GARBAGE HANDLER #
             for destination, entry in self.router.forwarding_table.items():  # iterate through forwarding table
-                if entry.timeout_flag == 0 and (current_time - entry.update_timer) > TIMEOUT:  # if timer exceeds TIMEOUT
+                if entry.timeout_flag == 0 and (
+                        current_time - entry.update_timer) > TIMEOUT:  # if timer exceeds TIMEOUT
                     entry.metric = INFINITY
                     self.router.update_forwarding_entry(destination, entry, 1)
                     self.router.print_forwarding_table()
@@ -327,7 +335,6 @@ class RipDaemon:
                 elif entry.timeout_flag == 1 and \
                         (current_time - entry.update_timer) > GARBAGE:  # if timer exceeds GARBAGE
                     self.router.remove_forwarding_entry(destination)
-                    logger("Removed dead entry(ies) from table...\n")
                     self.router.print_forwarding_table()
                     break  # if this isn't here a dict item is removed while iterating the dict which is the bad tru tru
             # INPUT SOCKET HANDLER #
@@ -346,8 +353,8 @@ class RipDaemon:
 
     def update(self):
         # sends update packets to all neighbouring routers
-        logger("Sending routing update to neighbouring routers...")
         self.router.print_forwarding_table()
+        logger("Sending routing update to neighbouring routers...", 1)
         for neighbour in self.router.config.outputs.keys():
             packet = RipPacket(self.router.config.router_id,
                                copy.deepcopy(self.router.forwarding_table), neighbour).construct()
@@ -370,7 +377,9 @@ class RipDaemon:
                 print(str(err))
 
     def schedule_triggered_update(self):
-        self.triggered_update = time() + (4 * random.random() + 1)  # set triggered update timer 1-5 seconds
+        due_in = (4 * random.random() + 1)
+        self.triggered_update = time() + due_in  # set triggered update timer 1-5 seconds
+        logger("Triggered update scheduled in {:.2f} seconds.".format(due_in), 1)
 
     def update_routes(self, sourceid, destination, route):
         if destination != self.router.config.router_id:  # prevents adding self to forwarding table
