@@ -7,18 +7,15 @@ import random
 import copy
 
 """
-TODO:
-
-    - Write a proper docstring
-    - Implementation of RIP lmao
-    - bruh we need to do a check that the metric in the config is between 1 and 15
-    - also maybe a check in the forwardingtable class when you init, that validates metric size?
-
-    Shai:
-        - RIP daemon update() function
-        - RIP packet construction & deconstruction
-
-
+    A simple implementation of the RIP protocol using python.
+    
+    Authors:
+        Shai Levin
+        Ryan Miller
+    
+    Date:
+        04/05/20
+    
 """
 
 UPDATE_FREQ = 10
@@ -249,10 +246,9 @@ class RipRouter:
         """Updates an entry in the forwarding table, adds entry if it doesn't exist
 
             Args:
-                router_id (int): Router ID of destination
-                entry (ForwardingEntry): Updated or new forwarding entry
-                timeout (int): Timeout flag for entry, default 0.
-
+                router_id (int): Router ID of destination     entry (ForwardingEntry): Updated or new forwarding entry
+                timeout (int): Timeout flag for entry, dfault 0.
+                    A simple implementation of the RIP protocol.
         """
         logger("Updating forwarding table entry for destination {}".format(router_id), 1)
         entry.timeout_flag = timeout
