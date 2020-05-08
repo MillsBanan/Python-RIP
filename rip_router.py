@@ -1,7 +1,6 @@
 import sys
 import re
 import socket
-import traceback
 from select import select
 from time import time
 import random
@@ -80,8 +79,7 @@ class ConfigData:
     Methods
     -------
     read_config_file
-        Opens and stores the contents of the config file given as a
-        parameter on the command line.
+
     parse
         Performs basic parsing over the contents of the config file making sure that it follows the basic syntax
         given below for config files. Stores relevant lines to the appropriate attributes of current ConfigData object
@@ -93,6 +91,7 @@ class ConfigData:
     parse_outputs
         Checks if the given outputs are hyphen separated integers
     check_port_num
+        Checks if the given port number is within the range 1024 - 64000
     """
 
     def __init__(self):
@@ -103,11 +102,14 @@ class ConfigData:
         self.parse(file_data)
 
     def __str__(self):
-        return "Configuration set for router {}:\n" \
-               "Input ports: {}\n" \
-               "Outputs: {}\n".format(self.router_id, self.input_ports, self.outputs)
+        return "+============ ROUTER {} CONFIGURATION ============+\n" \
+               "  Input ports -> {}\n" \
+               "  Outputs -> {}\n" \
+               "+================================================+\n".format(self.router_id,
+                                                                             self.input_ports, self.outputs)
 
     def read_config_file(self):
+        """Opens and stores the contents of the config file given as a parameter on the command line."""
         if len(sys.argv) != 2:
             print("Incorrect number of parameters given on command line.")
             print("USAGE: rip_router.py config.txt")
@@ -134,6 +136,7 @@ class ConfigData:
                 elif line[0] == "input-ports":
                     self.input_ports = line[1:-1]
                 elif line[0] == "outputs":
+                    print(line[0])
                     self.outputs = line[1:-1]
                 else:
                     raise ConfigSyntaxError("Config file syntax is incorrect")
@@ -142,7 +145,6 @@ class ConfigData:
             sys.exit(1)
         self.parse_router_id()
         self.parse_input_ports()
-        print(self.outputs)
         self.parse_outputs()
         try:
             if None in [self.router_id, self.outputs, self.input_ports]:
@@ -159,11 +161,9 @@ class ConfigData:
             if self.router_id < 1 or self.router_id > 64000:
                 raise ConfigSyntaxError("Router ID must be between 1 and 64000 inclusive!")
         except ValueError:
-            traceback.print_exc()
             print("ConfigSyntaxError: Router Id must be an integer")
             sys.exit(1)
         except ConfigSyntaxError as err:
-            traceback.print_exc()
             print(err)
             sys.exit(1)
 
@@ -194,10 +194,15 @@ class ConfigData:
             else:
                 try:
                     if len(router) != 3:
-                        raise ConfigSyntaxError("Outputs should be of form: portNum-metric-routerID")
+                        raise ConfigSyntaxError("Output: {}. "
+                                                "Outputs should be of form: portNum-metric-routerID.".format(router))
                     else:
                         if router[0] in self.input_ports:
-                            raise ConfigSyntaxError("Port numbers in outputs cannot be in inputs!")
+                            raise ConfigSyntaxError("Output: {}. "
+                                                    "Port numbers in outputs cannot be in inputs!".format(router))
+                        elif router[2] < 1 or router[2] > 15:
+                            raise ConfigSyntaxError("Output: {}. "
+                                                    "Metrics must be between 1 and 15 inclusive!".format(router))
                         else:
                             self.check_port_num(router[0])
                 except ConfigSyntaxError as err:
@@ -205,7 +210,7 @@ class ConfigData:
                     sys.exit(1)
         try:
             if len({router[0] for router in self.outputs}) != len(self.outputs):
-                raise ConfigSyntaxError("Port numbers in outputs should be unique")
+                raise ConfigSyntaxError("Port numbers in outputs must be unique!")
         except ConfigSyntaxError as err:
             print(str(err))
             sys.exit(1)
@@ -214,7 +219,8 @@ class ConfigData:
     def check_port_num(self, port_num):
         try:
             if port_num < 1024 or port_num > 64000:
-                raise ConfigSyntaxError("ConfigSyntaxError: Port number in config is outside acceptable range")
+                raise ConfigSyntaxError("Port: {}. "
+                                        "ConfigSyntaxError: Port number in config is outside acceptable range".format(port_num))
         except ConfigSyntaxError as err:
             print(str(err))
             sys.exit(1)
@@ -231,7 +237,7 @@ class ForwardingEntry:
 
     def __str__(self):
         return "    {}     |    {}   |      {}       |   {}   |".format(self.next_hop_id, self.metric,
-                                                                         self.timeout_flag,
+                                                                        self.timeout_flag,
                                                                         int(time() - self.update_timer))
 
 
@@ -269,7 +275,6 @@ class RipRouter:
         try:
             self.output_socket.sendto(data, (self.address, self.config.outputs[router_id][0]))
         except OSError as err:
-            traceback.print_exc()
             print(err)
 
     def remove_forwarding_entry(self, router_id):
@@ -280,7 +285,7 @@ class RipRouter:
             print("KeyError: Router {} is not in the forwarding table".format(err))
 
     def print_forwarding_table(self):
-        logger("+============== FORWARDING TABLE ===============+")
+        logger("+========= ROUTER {} FORWARDING TABLE ===========+".format(self.config.router_id))
         logger("| ID | NEXT HOP | METRIC | TIMEOUT FLAG | TIMER |")
         logger("+----|----------|--------|--------------|-------+")
         for key in sorted(self.forwarding_table):
@@ -330,7 +335,6 @@ class RipDaemon:
                 readable, _, _ = select(self.router.input_sockets, [], [], 1)
                 # timeout will actually be equal to something off of timing queue just not sure how to implement yet
             except OSError as err:
-                traceback.print_exc()
                 print(str(err))
             else:
                 if not readable:
@@ -417,24 +421,24 @@ class RipPacket:
     def deconstruct(self, packet):
         # deconstructs RIP packet and sets & returns source id and entries fields
         if len(packet) < 4:
-            logger("Packet size is less than minimum. Dropping packet...")
+            logger("Packet size is less than minimum. Dropping packet...\n")
             return None, None
         elif not self.header_valid(packet):
-            logger("Invalid packet received. Dropping packet...")
+            logger("Invalid packet received. Dropping packet...\n")
             return None, None
         else:
             entries = dict()
             source_id = (packet[2] << 8) + packet[3]
             payload = packet[4:]
             if len(payload) % 20 != 0:
-                logger("Packet payload contains 1 or more entries of incorrect size. Dropping packet...")
+                logger("Packet payload contains 1 or more entries of incorrect size. Dropping packet...\n")
                 return None, None
             else:
                 i, j = 0, 20  # used for slicing the bytearray, will always cover 20 bytes of the bytearray
                 for _ in range(len(payload) // 20):
                     entry, router_id = self.deconstruct_rip_entry(payload[i:j], source_id)
                     if not entry:
-                        logger("Packet {} contained invalid entry. Dropping packet...".format(packet))
+                        logger("Packet {} contained invalid entry. Dropping packet...\n".format(packet))
                         return None, None
                     else:
                         entries[router_id] = entry
