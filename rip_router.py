@@ -22,8 +22,8 @@ TODO:
 """
 
 UPDATE_FREQ = 10
-TIMEOUT = 30
-GARBAGE = 60
+TIMEOUT = UPDATE_FREQ*6
+GARBAGE = UPDATE_FREQ*4
 INFINITY = 16
 ENABLE_LOGGER = 1
 
@@ -134,7 +134,7 @@ class ConfigData:
                 elif line[0] == "input-ports":
                     self.input_ports = line[1:-1]
                 elif line[0] == "outputs":
-                    self.outputs = line[1:]
+                    self.outputs = line[1:-1]
                 else:
                     raise ConfigSyntaxError("Config file syntax is incorrect")
         except ConfigSyntaxError as err:
@@ -262,8 +262,7 @@ class RipRouter:
     def update_forwarding_entry(self, router_id, entry, timeout=0):
         """Updates an entry to the forwarding table"""
         entry.timeout_flag = timeout
-        if not timeout:
-            entry.update_timer = timer_refresh()
+        entry.update_timer = timer_refresh()
         self.forwarding_table[router_id] = entry
 
     def send(self, router_id, data):
@@ -377,10 +376,9 @@ class RipDaemon:
             if destination in self.router.forwarding_table.keys():  # if destination is already in forwarding table
                 if self.router.forwarding_table[destination].next_hop_id == sourceid:
                     # if next hop is the sender of the new route
-                    if route.metric == INFINITY:  # a route no longer exists
-                        if self.router.forwarding_table[destination].metric != INFINITY:
-                            self.router.update_forwarding_entry(destination, route, 1)  # set route to 1
-                            self.schedule_triggered_update()
+                    if route.metric == INFINITY and self.router.forwarding_table[destination].metric != INFINITY:
+                        self.router.update_forwarding_entry(destination, route, 1)  # set route to 1
+                        self.schedule_triggered_update()
                     else:  # the route via the same next_hop has changed to a different metric
                         self.router.update_forwarding_entry(destination, route)
                 elif self.router.forwarding_table[destination].metric > route.metric:
