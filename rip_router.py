@@ -116,7 +116,6 @@ class ConfigData:
                 elif line[0] == "input-ports":
                     self.input_ports = line[1:-1]
                 elif line[0] == "outputs":
-                    print(line[0])
                     self.outputs = line[1:-1]
                 else:
                     raise ConfigSyntaxError("Config file syntax is incorrect")
@@ -319,7 +318,7 @@ class ForwardingEntry:
 
     def __str__(self):
         return "    {}     |    {}   |      {}       |   {}   |".format(self.next_hop_id, self.metric,
-                                                                        self.timeout_flag, self.update_timer)
+                                                                        self.timeout_flag, int(time() - self.update_timer))
 
 
 class RipError(Exception):
