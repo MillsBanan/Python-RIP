@@ -253,6 +253,7 @@ class RipRouter:
                 router_id (int): Router ID of destination
                 entry (ForwardingEntry): Updated or new forwarding entry
                 timeout (int): Timeout flag for entry, default 0.
+
         """
         logger("Updating forwarding table entry for destination {}".format(router_id), 1)
         entry.timeout_flag = timeout
@@ -264,15 +265,22 @@ class RipRouter:
 
             Args:
                 router_id (int): Router ID of the destination router for the packet
-                packet (bytearray):
+                packet (bytearray): Packet containing an RIP response message or triggered update
+
         """
         try:
             self.output_socket.sendto(packet, (self.address, self.config.outputs[router_id][0]))
         except OSError as err:
+            logger("Unable to send packet to {}.".format(router_id), 1)
             print(err)
 
     def remove_forwarding_entry(self, router_id):
-        """Removes an entry from the forwarding table"""
+        """Removes an entry from the forwarding table if it exists
+
+            Args:
+                router_id (int): Key of entry in forwarding table to be removed
+
+        """
         try:
             logger("Router {} has been unreachable for too long, removing route..".format(router_id), 1)
             del self.forwarding_table[router_id]
@@ -280,6 +288,7 @@ class RipRouter:
             print("KeyError: Router {} is not in the forwarding table".format(err))
 
     def print_forwarding_table(self):
+        """Prints the contents of the forwarding table in ascending order of Router IDs"""
         logger("+========= ROUTER {} FORWARDING TABLE ===========+".format(self.config.router_id))
         logger("| ID | NEXT HOP | METRIC | TIMEOUT FLAG | TIMER |")
         logger("+----|----------|--------|--------------|-------+")
@@ -326,17 +335,26 @@ class RipError(Exception):
 
 
 class RipDaemon:
-    """RIP routing daemon which contains a router class which it controls"""
+    """A class implementation of a basic RIP daemon, controls an instance of RipRouter.
 
+        Attributes:
+            router (RipRouter): Router that the daemon will control
+            last_update (float): Timestamp of the last time scheduled update was done
+            triggered_update (float): Default of -1 when no triggered update is to be sent or
+                                      float between 1 and 5 that delays when the triggered update is sent
+
+    """
     def __init__(self, router):
+        """Sets self.router to router, sets other attributes to default, sends update to neighbours, start event loop"""
         self.router = router
         self.update()
         self.last_update = timer_refresh(1)
         self.triggered_update = -1  # timer for triggered updates
-        logger("RIP Daemon initialized. Starting routing loop\n")
+        logger("RIP Daemon initialized. Starting routing loop\n", 1)
         self.event_loop()
 
     def event_loop(self):
+        """Infinite loop, handles all RIP events specific to this implementation"""
         while True:
             current_time = time()
 
@@ -359,23 +377,22 @@ class RipDaemon:
                         (current_time - entry.update_timer) > GARBAGE:  # if timer exceeds GARBAGE
                     self.router.remove_forwarding_entry(destination)
                     self.router.print_forwarding_table()
-                    break  # this prevents the iteration after the dictionary has changed size, which would cause an error
+                    break  # this stops iteration after the dictionary has changed size, prevents error
             # INPUT SOCKET HANDLER #
             try:
-                readable, _, _ = select(self.router.input_sockets, [], [], 1)
-                # timeout will actually be equal to something off of timing queue just not sure how to implement yet
+                readable, _, _ = select(self.router.input_sockets, [], [], 1)  # select timeout of 1 second.
             except OSError as err:
                 print(str(err))
             else:
-                if not readable:
+                if not readable:  # timout occurred
                     continue
-                else:
+                else:  # data was received
                     for sock in readable:
                         packet = sock.recv(512)
                         self.process_input(packet)
 
     def update(self):
-        # sends update packets to all neighbouring routers
+        """Sends update packets to all neighbouring routers"""
         self.router.print_forwarding_table()
         logger("Sending routing update to neighbouring routers...", 1)
         for neighbour in self.router.config.outputs.keys():
@@ -384,34 +401,45 @@ class RipDaemon:
             self.router.send(neighbour, packet)
 
     def process_input(self, packet):
-        # process a packet which has been received in one of the input buffers
+        """Processes packet, drops the packet if it came from a non neighboured router, does DV calcs otherwise
+                Args:
+                    packet (bytearray): Packet received on one of the routers inputs
+        """
         sourceid, entries = RipPacket().deconstruct(packet)
         if sourceid is not None and entries is not None:  # valid packet received
             try:
-                if sourceid not in self.router.config.outputs.keys():
+                if sourceid not in self.router.config.outputs.keys():  # came from a non-neighboured router
                     raise RipError(
                         "Router received a packet from Router {} which is not a neighbour router".format(sourceid))
                 # include a forwarding entry for the router which sent the packet
                 entries[sourceid] = ForwardingEntry(sourceid, 0)
 
-                for destination in entries.keys():  # check for each entry if its better than what we got
+                for destination in entries.keys():  # does DV calcs for each entry in packet
                     self.update_routes(sourceid, destination, entries[destination])
             except RipError as err:
                 print(str(err))
                 logger("Dropping packet...")
 
     def schedule_triggered_update(self):
+        """Sets self.triggered_update to a float between 1-5"""
         due_in = ((UPDATE_FREQ/7.5) * random.random() + 1)
         self.triggered_update = time() + due_in  # set triggered update timer 1-5 seconds
         logger("Triggered update scheduled in {:.2f} seconds.".format(due_in), 1)
 
-    def update_routes(self, sourceid, destination, route):
+    def update_routes(self, source_id, destination, route):
+        """Determines if route is better than the already known route in the forwarding table
+                Args:
+                    source_id (int): Router ID of the source of the route
+                    destination (int): Router ID of where the route points to
+                    route (ForwardingEntry): Candidate forwarding entry to be added to table
+
+        """
         if destination != self.router.config.router_id:  # prevents adding self to forwarding table
             added_cost = self.router.config.outputs[route.next_hop_id][1]
             # adds link cost to each entries metric
             route.metric = min(added_cost + route.metric, INFINITY)
             if destination in self.router.forwarding_table.keys():  # if destination is already in forwarding table
-                if self.router.forwarding_table[destination].next_hop_id == sourceid:
+                if self.router.forwarding_table[destination].next_hop_id == source_id:
                     # if next hop is the sender of the new route
                     if route.metric == INFINITY and self.router.forwarding_table[destination].metric != INFINITY:
                         self.router.update_forwarding_entry(destination, route, 1)  # set route to 1
@@ -425,7 +453,17 @@ class RipDaemon:
 
 
 class RipPacket:
+    """A class to construct, deconstruct and validate RIP packets.
+
+            Attributes
+            ----------
+            source_id (int): Router ID of creator of the packet, default None
+            entries (dict): Copy of creators forwarding table, default None
+            destination (int): Router ID of the intended recipient of the packet, default None
+
+    """
     def __init__(self, sourceid=None, entries=None, destinationid=None):
+        """Set's relevant attributes to args, sets route metrics to infinity when applicable"""
         self.sourceid = sourceid
         # poisoned reverse, if the entry's next hop is the destination, it sets the metric to 'infinity'
         if entries is not None:
@@ -435,25 +473,48 @@ class RipPacket:
         self.entries = entries
 
     def construct(self):
+        """Constructs an RIP packet
 
-        # builds packet with the information in the object and returns a bytearray
+                Returns:
+                    packet (bytearray): RIP packet ready to send
+
+        """
         packet = [2, 2]  # packet type is always 2, and version is always 2
         # 3rd & 4th bytes are now senders router ID
         packet += [self.sourceid >> 8, self.sourceid & 0xFF]
-        for router_id, info in self.entries.items():
-            packet += self.construct_rip_entry(router_id, info)
+        for router_id, item in self.entries.items():
+            packet += self.construct_rip_entry(router_id, item.metric)
         return bytearray(packet)
 
-    def construct_rip_entry(self, router_id, info):
+    def construct_rip_entry(self, router_id, metric):
+        """Formats entry data ready to append to an RIP packet
+
+                Args:
+                    router_id (int): Router ID of where the entry route will point to
+                    metric (int): Metric of route
+
+                Returns:
+                     list : entry ready to append to an RIP packet
+
+        """
         return [0, 2, 0, 0,  # AFI = 2 for IP
                 0, 0, router_id >> 8, router_id & 0xFF,  # router_id is only 16 bits
                 0, 0, 0, 0,
                 0, 0, 0, 0,
-                info.metric >> 24, (info.metric >> 16) & 0xFF, (info.metric >> 8) & 0xFF, info.metric & 0xFF]
+                metric >> 24, (metric >> 16) & 0xFF, (metric >> 8) & 0xFF, metric & 0xFF]
 
     def deconstruct(self, packet):
-        # deconstructs RIP packet and sets & returns source id and entries fields
-        if len(packet) < 4:
+        """Deconstructs and validates an RIP packet
+                Args:
+                    packet (bytearray): RIP packet
+
+                Returns:
+                      None, None : If packet is invalid
+                      source_id (int), entries (dict) : Creator of packet, copy of senders forwarding table if it exists
+                                                        and packet is valid.
+
+        """
+        if len(packet) < 4:  # Packet is smaller than RIP header
             logger("Packet size is less than minimum. Dropping packet...\n")
             return None, None
         elif not self.header_valid(packet):
@@ -480,6 +541,18 @@ class RipPacket:
                 return source_id, entries
 
     def deconstruct_rip_entry(self, entry, next_hop):
+        """Deconstructs and validates an RIP entry
+
+                Args:
+                    entry (bytearray): Bytearray containing entry data
+                    next_hop (int): The next hop for the entry
+
+                Returns:
+                    None, None : If entry is invalid
+                    ForwardingEntry, router_id (int) : A forwarding entry for the data contained in the packet entry and
+                                                       the router_id that the entry points to if the packet is valid.
+
+        """
         if not self.entry_valid(entry):
             return None, None
         else:
@@ -488,17 +561,33 @@ class RipPacket:
             return ForwardingEntry(next_hop, metric), router_id
 
     def header_valid(self, header):
+        """Validates the header of an RIP packet
+                Args:
+                    header (bytearray): Bytearray containing RIP packet header
+
+                Returns:
+                      True : If header is valid
+                      False : otherwise
+
+        """
         if not (header[0] == 2 and header[1] == 2):
             return False
         else:
             return True
 
     def entry_valid(self, entry):
-        if not (entry[1] == 2 and
-                entry[2] + entry[3] == 0 and
-                # (1 < (entry[6] << 8) + entry[7] < 64000) and
-                entry[8] + entry[9] + entry[10] + entry[11] == 0 and
-                entry[12] + entry[13] + entry[14] + entry[15] == 0):
+        """Validate an entry in an RIP packet
+                Args:
+                    entry (bytearray): Bytearray containing an RIP entry
+
+                Returns:
+                      True: If entry is valid
+                      False: otherwise
+        """
+        if not (entry[1] == 2 and  # AFI must equal 2
+                entry[2] + entry[3] == 0 and  # Bytes 2, 3 must both be zero
+                entry[8] + entry[9] + entry[10] + entry[11] == 0 and  # Bytes 8, 9, 10, 11 must all be zero
+                entry[12] + entry[13] + entry[14] + entry[15] == 0):  # Bytes 12, 13, 14, 15 must all be zero
             return False
         else:
             return True
