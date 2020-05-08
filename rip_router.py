@@ -52,54 +52,19 @@ class ConfigSyntaxError(Exception):
         return "ConfigSyntaxError:" + self.message + "\n"
 
 
-class RouterError(Exception):
-    """
-    A class to raise custom errors
-    """
-
-    def __init__(self, message):
-        self.message = message
-
-    def __str__(self):
-        return str(self.message)
-
-
 class ConfigData:
     """
     A class used to read and store router configuration data.
 
     Attributes
     ----------
-    router_id : int
-        Unique ID for the router in the network
-    input_ports : list
-        Contains all of the port numbers (unique) that represent the interfaces
-        of the router that are connected to adjacent routers
-    outputs : list
-        Contains elements of form PortNum-Metric-ID for each router 'R' adjacent to router 'A'.
-        PortNum represents the interface that router R is connected to router A over.
-        Metric is the cost of the link from A to R.
-        ID is the router ID of router R.
-
-    Methods
-    -------
-    read_config_file
-
-    parse
-        Performs basic parsing over the contents of the config file making sure that it follows the basic syntax
-        given below for config files. Stores relevant lines to the appropriate attributes of current ConfigData object
-        then makes calls to the parse_* methods below.
-    parse_router_id
-        Checks if the given router ID is an integer and within the accepted range.
-    parse_input_ports
-        Checks if the given input ports are distinct integers and within the accepted range.
-    parse_outputs
-        Checks if the given outputs are hyphen separated integers
-    check_port_num
-        Checks if the given port number is within the range 1024 - 64000
+    router_id (int): Unique ID for the router in the network
+    input_ports (list): Contains unique port numbers to listen on for each adjacent router
+    outputs (list): Contains elements of form PortNum-Metric-ID for sending data to each adjacent router.
+                    Is transformed into a dict by self.parse_outputs().
     """
-
     def __init__(self):
+        """Reads and parses config file given on CLI, transforms config data into useful objects for later use."""
         file_data = self.read_config_file()
         self.router_id = None
         self.input_ports = None
@@ -114,7 +79,11 @@ class ConfigData:
                                                                              self.input_ports, self.outputs)
 
     def read_config_file(self):
-        """Opens and stores the contents of the config file given as a parameter on the command line."""
+        """Opens and stores the contents of the config file given as a parameter on the command line.
+
+            Returns:
+                File_data: List of all of the lines in the config file read if successful
+        """
         if len(sys.argv) != 2:
             print("Incorrect number of parameters given on command line.")
             print("USAGE: rip_router.py config1.txt")
@@ -131,6 +100,12 @@ class ConfigData:
         return file_data
 
     def parse(self, file_data):
+        """Performs basic syntax parsing over the config file. Stores config data to relevant attributes of self.
+
+            Args:
+                file_data: List of all of the lines in the config file
+
+        """
         try:
             for line in file_data:
                 line = re.split(', |\s', line)
@@ -161,6 +136,7 @@ class ConfigData:
             sys.exit(1)
 
     def parse_router_id(self):
+        """Checks if the given router ID is an integer and within the accepted range."""
         try:
             self.router_id = int(self.router_id)
             if self.router_id < 1 or self.router_id > 64000:
@@ -173,6 +149,7 @@ class ConfigData:
             sys.exit(1)
 
     def parse_input_ports(self):
+        """Checks if the given input ports are distinct integers and within the accepted range."""
         for i in range(len(self.input_ports)):
             try:
                 self.input_ports[i] = int(self.input_ports[i])
@@ -189,6 +166,7 @@ class ConfigData:
             sys.exit(1)
 
     def parse_outputs(self):
+        """Parses outputs. Changes self.outputs to a dict with entries of the form -> Router ID: [Port Num, Metric]"""
         for i in range(len(self.outputs)):
             try:
                 router = [int(x) for x in self.outputs[i].split('-')]
@@ -222,6 +200,7 @@ class ConfigData:
         self.outputs = {router[2]: router[:2] for router in self.outputs}
 
     def check_port_num(self, port_num):
+        """Checks if the given port number is within the range 1024 - 64000."""
         try:
             if port_num < 1024 or port_num > 64000:
                 raise ConfigSyntaxError("Port: {}. "
@@ -231,25 +210,22 @@ class ConfigData:
             sys.exit(1)
 
 
-class ForwardingEntry:
-    """Class to hold information on forwarding table entries"""
-
-    def __init__(self, next_hop, metric):
-        self.next_hop_id = next_hop
-        self.metric = metric
-        self.timeout_flag = 0
-        self.update_timer = timer_refresh()
-
-    def __str__(self):
-        return "    {}     |    {}   |      {}       |   {}   |".format(self.next_hop_id, self.metric,
-                                                                        self.timeout_flag,
-                                                                        int(time() - self.update_timer))
-
-
 class RipRouter:
-    """Class which simulates a router with attached neighbours, message transmit/receive and a forwarding table"""
+    """A class to simulate a router controllable by an instance of the class RipDaemon
 
+        Attributes
+        ----------
+        config (ConfigData): Holds the configuration data for the router
+        input_sockets (list): Contains all sockets that the router will listen on for incoming data from neighbour routers.
+        output_socket (socket): Socket that will be used to send data to neighbour routers. Can be arbitrarily
+                                chosen from input_sockets.
+        address (str): Holds address used to bind sockets. Should always be localhost for this implementation.
+        forwarding_table (dict): Stores entries for all known destinations in the network.
+                                 Entries have form -> Router ID of destination: ForwardingEntry
+
+    """
     def __init__(self, router_config):
+        """Sets config to router_config, and other attributes to default values then starts itself."""
         self.config = router_config
         self.input_sockets = []
         self.output_socket = None
@@ -258,7 +234,7 @@ class RipRouter:
         self.start()
 
     def start(self):
-        """Binds input sockets and sets the output socket to the first input socket (if it exists)"""
+        """Creates, binds, and appends sockets to input_sockets for all input ports. Sets output_socket."""
         for input_port in self.config.input_ports:
             try:
                 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -271,15 +247,27 @@ class RipRouter:
         self.print_forwarding_table()
 
     def update_forwarding_entry(self, router_id, entry, timeout=0):
-        """Updates an entry to the forwarding table"""
+        """Updates an entry in the forwarding table, adds entry if it doesn't exist
+
+            Args:
+                router_id (int): Router ID of destination
+                entry (ForwardingEntry): Updated or new forwarding entry
+                timeout (int): Timeout flag for entry, default 0.
+        """
         logger("Updating forwarding table entry for destination {}".format(router_id), 1)
         entry.timeout_flag = timeout
         entry.update_timer = timer_refresh()
         self.forwarding_table[router_id] = entry
 
-    def send(self, router_id, data):
+    def send(self, router_id, packet):
+        """Sends packet to the appropriate port to reach the destination router.
+
+            Args:
+                router_id (int): Router ID of the destination router for the packet
+                packet (bytearray):
+        """
         try:
-            self.output_socket.sendto(data, (self.address, self.config.outputs[router_id][0]))
+            self.output_socket.sendto(packet, (self.address, self.config.outputs[router_id][0]))
         except OSError as err:
             print(err)
 
@@ -300,6 +288,41 @@ class RipRouter:
             logger("| {}  |".format(key) + str(entry))
             logger("+----|----------|--------|--------------|-------+")
         logger("+===============================================+\n")
+
+
+class ForwardingEntry:
+    """A class to hold the values in the RipRouter forwarding table
+
+        Attributes
+        ----------
+        next_hop_id (int): Router ID of the next hop used to get to destination
+        metric (int): Int between 1 and 15 inclusive, represents the cost to destination
+        timeout_flag (int): Flag is set to 1 when update_timer - current time > TIMEOUT, default 0
+        update_timer (float): Holds a timestamp of when the forwarding entry was last updated
+
+    """
+    def __init__(self, next_hop, metric):
+        """Sets relevant attributes to given args and others to default values."""
+        self.next_hop_id = next_hop
+        self.metric = metric
+        self.timeout_flag = 0
+        self.update_timer = timer_refresh()
+
+    def __str__(self):
+        return "    {}     |    {}   |      {}       |   {}   |".format(self.next_hop_id, self.metric,
+                                                                        self.timeout_flag, self.update_timer)
+
+
+class RipError(Exception):
+    """
+    A class to raise errors related to RIP
+    """
+
+    def __init__(self, message):
+        self.message = message
+
+    def __str__(self):
+        return str(self.message)
 
 
 class RipDaemon:
@@ -366,15 +389,16 @@ class RipDaemon:
         if sourceid is not None and entries is not None:  # valid packet received
             try:
                 if sourceid not in self.router.config.outputs.keys():
-                    raise RouterError(
+                    raise RipError(
                         "Router received a packet from Router {} which is not a neighbour router".format(sourceid))
                 # include a forwarding entry for the router which sent the packet
                 entries[sourceid] = ForwardingEntry(sourceid, 0)
 
                 for destination in entries.keys():  # check for each entry if its better than what we got
                     self.update_routes(sourceid, destination, entries[destination])
-            except RouterError as err:
+            except RipError as err:
                 print(str(err))
+                logger("Dropping packet...")
 
     def schedule_triggered_update(self):
         due_in = (4 * random.random() + 1)
